@@ -1,0 +1,32 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "max_connections": 1000,
+    "socket_timeout": 30
+  },
+  "threading": {
+    "thread_pool_size": 8,
+    "max_queue_size": 10000
+  },
+  "files": {
+    "document_root": "./public",
+    "default_file": "index.html",
+    "max_file_size": 52428800
+  },
+  "cache": {
+    "enabled": true,
+    "max_size_mb": 100,
+    "ttl_seconds": 300
+  },
+  "rate_limiting": {
+    "enabled": false,
+    "requests_per_second": 100,
+    "burst_size": 200
+  },
+  "logging": {
+    "access_log": "./logs/access.log",
+    "error_log": "./logs/error.log",
+    "log_level": "info"
+  }
+}
