@@ -2,6 +2,8 @@
 #include <iostream>
 #include <csignal>
 #include <memory>
+#include <thread>
+#include <chrono>
 
 std::unique_ptr<Server> server_instance;
 
@@ -16,6 +18,7 @@ void signal_handler(int signal) {
 
 int main(int argc, char* argv[]) {
     int port = 8080;
+    size_t thread_count = 0; // 0 means auto-detect
     
     if (argc > 1) {
         try {
@@ -29,19 +32,37 @@ int main(int argc, char* argv[]) {
         }
     }
     
+    if (argc > 2) {
+        try {
+            thread_count = std::stoul(argv[2]);
+            if (thread_count > 128) {
+                std::cerr << "Thread count too high. Using auto-detect." << std::endl;
+                thread_count = 0;
+            }
+        } catch (const std::exception&) {
+            std::cerr << "Invalid thread count argument. Using auto-detect." << std::endl;
+            thread_count = 0;
+        }
+    }
+    
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
     
-    server_instance = std::make_unique<Server>(port);
+    server_instance = std::make_unique<Server>(port, "0.0.0.0", thread_count);
     
-    std::cout << "Starting HTTP server on port " << port << "..." << std::endl;
+    std::cout << "Starting high-performance HTTP server on port " << port;
+    if (thread_count > 0) {
+        std::cout << " with " << thread_count << " threads";
+    }
+    std::cout << "..." << std::endl;
     
     if (!server_instance->start()) {
         std::cerr << "Failed to start server" << std::endl;
         return 1;
     }
     
-    std::cout << "Server started successfully. Press Ctrl+C to stop." << std::endl;
+    std::cout << "Server started successfully with epoll + thread pool." << std::endl;
+    std::cout << "Press Ctrl+C to stop." << std::endl;
     
     while (server_instance->is_running()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
