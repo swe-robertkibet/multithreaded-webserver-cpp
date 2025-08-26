@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page - C++ Web Server</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 600px; 
+            margin: 50px auto; 
+            padding: 20px; 
+            background: #f0f8ff; 
+        }
+        .test-box { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        .success { color: #28a745; }
+        .info { color: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="test-box">
+        <h1 class="success">✅ Test Page Loaded Successfully!</h1>
+        <p class="info">This demonstrates static file serving from the C++ web server.</p>
+        
+        <h2>Server Capabilities</h2>
+        <ul>
+            <li>Static HTML file serving ✓</li>
+            <li>CSS styling support ✓</li>
+            <li>MIME type detection ✓</li>
+            <li>Directory navigation ✓</li>
+        </ul>
+        
+        <p><a href="/">&larr; Back to Home</a></p>
+        <p><strong>File:</strong> /test.html</p>
+        <p><strong>Server:</strong> MultithreadedWebServer/1.0</p>
+    </div>
+</body>
+</html>
