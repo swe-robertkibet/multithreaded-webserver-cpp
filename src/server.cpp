@@ -1,4 +1,7 @@
 #include "server.h"
+#include "http_request.h"
+#include "http_response.h"
+#include "file_handler.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -15,6 +18,7 @@ Server::Server(int port, const std::string& host, size_t thread_count)
     
     epoll_ = std::make_unique<EpollWrapper>();
     thread_pool_ = std::make_unique<ThreadPool>(thread_count);
+    file_handler_ = std::make_unique<FileHandler>("./public", "index.html");
 }
 
 Server::~Server() {
@@ -196,11 +200,41 @@ void Server::handle_client_data(int client_fd) {
 void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     if (!conn) return;
     
-    std::string response = generate_response(conn->buffer);
+    HttpRequest request = HttpRequest::parse(conn->buffer);
+    HttpResponse response;
     
-    ssize_t sent = send(conn->fd, response.c_str(), response.length(), 0);
+    if (!request.is_valid()) {
+        response = HttpResponse::create_error_response(HttpStatus::BAD_REQUEST, "Invalid HTTP request");
+    } else {
+        // Determine keep-alive based on request
+        conn->keep_alive = request.is_keep_alive();
+        
+        if (request.get_method() == HttpMethod::GET || request.get_method() == HttpMethod::HEAD) {
+            std::string path = request.get_path();
+            
+            if (path.find("/api/") == 0) {
+                response = handle_api_request(request);
+            } else {
+                response = file_handler_->handle_file_request(path);
+            }
+            
+            // Handle HEAD method by clearing body
+            if (request.get_method() == HttpMethod::HEAD) {
+                response.set_body("");
+            }
+        } else {
+            response = HttpResponse::create_error_response(HttpStatus::METHOD_NOT_ALLOWED, "Method not supported");
+        }
+    }
+    
+    // Set connection header based on keep-alive decision
+    response.set_keep_alive(conn->keep_alive);
+    
+    std::string response_str = response.to_string();
+    ssize_t sent = send(conn->fd, response_str.c_str(), response_str.length(), 0);
     if (sent == -1) {
         std::cerr << "Failed to send response: " << strerror(errno) << std::endl;
+        conn->keep_alive = false;
     }
     
     if (!conn->keep_alive) {
@@ -238,26 +272,30 @@ void Server::cleanup_inactive_connections() {
     }
 }
 
-std::string Server::generate_response(const std::string& request) {
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
+HttpResponse Server::handle_api_request(const HttpRequest& request) {
+    std::string path = request.get_path();
     
-    std::ostringstream response;
-    response << "HTTP/1.1 200 OK\r\n";
-    response << "Content-Type: text/html\r\n";
-    response << "Connection: close\r\n";
-    response << "Server: MultithreadedWebServer/1.0\r\n";
-    response << "\r\n";
-    response << "<!DOCTYPE html>\n";
-    response << "<html><head><title>Hello World Server</title></head>\n";
-    response << "<body>\n";
-    response << "<h1>Hello World with Epoll!</h1>\n";
-    response << "<p>High-Performance Multithreaded C++ Web Server</p>\n";
-    response << "<p>Request time: " << std::ctime(&time_t) << "</p>\n";
-    response << "<p>Thread Pool Queue Size: " << thread_pool_->get_queue_size() << "</p>\n";
-    response << "<p>Active Connections: " << connections_.size() << "</p>\n";
-    response << "<pre>Request received:\n" << request.substr(0, 500) << "</pre>\n";
-    response << "</body></html>\n";
+    if (path == "/api/info" || path == "/api/status") {
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        
+        std::ostringstream body;
+        body << "{\n";
+        body << "  \"server\": \"MultithreadedWebServer/1.0\",\n";
+        body << "  \"timestamp\": \"" << std::ctime(&time_t) << "\",\n";
+        body << "  \"thread_pool_size\": " << thread_pool_->get_thread_count() << ",\n";
+        body << "  \"queue_size\": " << thread_pool_->get_queue_size() << ",\n";
+        body << "  \"active_connections\": " << connections_.size() << ",\n";
+        body << "  \"document_root\": \"" << file_handler_->get_document_root() << "\",\n";
+        body << "  \"architecture\": \"epoll + thread_pool\",\n";
+        body << "  \"http_version\": \"HTTP/1.1\"\n";
+        body << "}\n";
+        
+        HttpResponse response(HttpStatus::OK);
+        response.set_body(body.str());
+        response.set_content_type("application/json");
+        return response;
+    }
     
-    return response.str();
+    return HttpResponse::create_error_response(HttpStatus::NOT_FOUND, "API endpoint not found");
 }

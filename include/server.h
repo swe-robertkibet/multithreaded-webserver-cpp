@@ -9,6 +9,9 @@
 #include <chrono>
 #include "epoll_wrapper.h"
 #include "thread_pool.h"
+#include "http_request.h"
+#include "http_response.h"
+#include "file_handler.h"
 
 struct Connection {
     int fd;
@@ -36,7 +39,7 @@ private:
     void handle_client_request(std::shared_ptr<Connection> conn);
     void close_connection(int client_fd);
     void cleanup_inactive_connections();
-    std::string generate_response(const std::string& request);
+    HttpResponse handle_api_request(const HttpRequest& request);
     
     int server_fd_;
     int port_;
@@ -46,6 +49,7 @@ private:
     std::unique_ptr<EpollWrapper> epoll_;
     std::unique_ptr<ThreadPool> thread_pool_;
     std::unique_ptr<std::thread> event_thread_;
+    std::unique_ptr<FileHandler> file_handler_;
     
     std::unordered_map<int, std::shared_ptr<Connection>> connections_;
     std::mutex connections_mutex_;
