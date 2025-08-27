@@ -6,8 +6,12 @@
 #include <algorithm>
 #include <iostream>
 
-FileHandler::FileHandler(const std::string& document_root, const std::string& default_file)
-    : document_root_(document_root), default_file_(default_file), max_file_size_(DEFAULT_MAX_FILE_SIZE) {
+FileHandler::FileHandler(const std::string& document_root, const std::string& default_file, bool enable_cache, size_t cache_size_mb)
+    : document_root_(document_root), default_file_(default_file), max_file_size_(DEFAULT_MAX_FILE_SIZE), cache_enabled_(enable_cache) {
+    
+    if (cache_enabled_) {
+        cache_ = std::make_unique<LRUCache>(cache_size_mb, 300); // 5 minute TTL
+    }
     
     // Ensure document root ends with a slash
     if (!document_root_.empty() && document_root_.back() != '/') {
@@ -60,12 +64,34 @@ HttpResponse FileHandler::handle_file_request(const std::string& request_path) {
             return HttpResponse::create_error_response(HttpStatus::FORBIDDEN, "File too large");
         }
         
+        // Try cache first
+        if (cache_enabled_ && cache_) {
+            auto cached_entry = cache_->get(resolved_path);
+            if (cached_entry) {
+                HttpResponse response(HttpStatus::OK);
+                response.set_body(cached_entry->data);
+                response.set_content_type(cached_entry->content_type);
+                response.set_header("X-Cache", "HIT");
+                return response;
+            }
+        }
+        
         auto file_content = read_file(resolved_path);
         if (!file_content) {
             return HttpResponse::create_error_response(HttpStatus::INTERNAL_SERVER_ERROR, "Could not read file");
         }
         
-        return HttpResponse::create_file_response(resolved_path, *file_content);
+        // Cache the file if caching is enabled
+        std::string extension = std::filesystem::path(resolved_path).extension().string();
+        std::string mime_type = HttpResponse::get_mime_type(extension);
+        
+        if (cache_enabled_ && cache_ && file_content->size() < 1024 * 1024) { // Cache files < 1MB
+            cache_->put(resolved_path, *file_content, mime_type);
+        }
+        
+        HttpResponse response = HttpResponse::create_file_response(resolved_path, *file_content);
+        response.set_header("X-Cache", "MISS");
+        return response;
         
     } catch (const std::exception& e) {
         std::cerr << "File handler error: " << e.what() << std::endl;
@@ -217,6 +243,7 @@ HttpResponse FileHandler::create_directory_listing(const std::string& dir_path, 
         HttpResponse response(HttpStatus::OK);
         response.set_body(body.str());
         response.set_content_type("text/html; charset=utf-8");
+        response.set_header("X-Cache", "NONE"); // Directory listings are not cached
         
         return response;
         

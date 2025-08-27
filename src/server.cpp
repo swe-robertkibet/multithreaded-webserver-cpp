@@ -18,7 +18,7 @@ Server::Server(int port, const std::string& host, size_t thread_count)
     
     epoll_ = std::make_unique<EpollWrapper>();
     thread_pool_ = std::make_unique<ThreadPool>(thread_count);
-    file_handler_ = std::make_unique<FileHandler>("./public", "index.html");
+    file_handler_ = std::make_unique<FileHandler>("./public", "index.html", true, 100);
 }
 
 Server::~Server() {
@@ -279,6 +279,10 @@ HttpResponse Server::handle_api_request(const HttpRequest& request) {
         auto now = std::chrono::system_clock::now();
         auto time_t = std::chrono::system_clock::to_time_t(now);
         
+        // Get cache statistics
+        size_t cache_hits = 0, cache_misses = 0, cache_entries = 0, cache_memory = 0;
+        file_handler_->get_cache_stats(cache_hits, cache_misses, cache_entries, cache_memory);
+        
         std::ostringstream body;
         body << "{\n";
         body << "  \"server\": \"MultithreadedWebServer/1.0\",\n";
@@ -287,8 +291,18 @@ HttpResponse Server::handle_api_request(const HttpRequest& request) {
         body << "  \"queue_size\": " << thread_pool_->get_queue_size() << ",\n";
         body << "  \"active_connections\": " << connections_.size() << ",\n";
         body << "  \"document_root\": \"" << file_handler_->get_document_root() << "\",\n";
-        body << "  \"architecture\": \"epoll + thread_pool\",\n";
-        body << "  \"http_version\": \"HTTP/1.1\"\n";
+        body << "  \"architecture\": \"epoll + thread_pool + lru_cache\",\n";
+        body << "  \"http_version\": \"HTTP/1.1\",\n";
+        body << "  \"cache\": {\n";
+        body << "    \"hits\": " << cache_hits << ",\n";
+        body << "    \"misses\": " << cache_misses << ",\n";
+        body << "    \"entries\": " << cache_entries << ",\n";
+        body << "    \"memory_usage_bytes\": " << cache_memory;
+        if (cache_hits + cache_misses > 0) {
+            double hit_ratio = static_cast<double>(cache_hits) / (cache_hits + cache_misses) * 100.0;
+            body << ",\n    \"hit_ratio_percent\": " << std::fixed << std::setprecision(1) << hit_ratio;
+        }
+        body << "\n  }\n";
         body << "}\n";
         
         HttpResponse response(HttpStatus::OK);
