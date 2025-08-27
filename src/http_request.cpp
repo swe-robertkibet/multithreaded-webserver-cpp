@@ -116,7 +116,7 @@ std::string HttpRequest::url_decode(const std::string& str) {
     
     for (size_t i = 0; i < str.length(); ++i) {
         if (str[i] == '%' && i + 2 < str.length()) {
-            int hex_value;
+            unsigned int hex_value;
             if (std::sscanf(str.substr(i + 1, 2).c_str(), "%x", &hex_value) == 1) {
                 result += static_cast<char>(hex_value);
                 i += 2;

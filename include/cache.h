@@ -14,6 +14,12 @@ struct CacheEntry {
     std::chrono::steady_clock::time_point last_accessed;
     size_t access_count;
     
+    CacheEntry() : access_count(0) {
+        auto now = std::chrono::steady_clock::now();
+        created = now;
+        last_accessed = now;
+    }
+    
     CacheEntry(const std::vector<char>& file_data, const std::string& mime_type)
         : data(file_data), content_type(mime_type), access_count(1) {
         auto now = std::chrono::steady_clock::now();

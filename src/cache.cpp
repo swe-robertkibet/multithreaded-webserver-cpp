@@ -87,7 +87,7 @@ void LRUCache::put(const std::string& key, const std::vector<char>& data, const 
     // Add new entry
     lru_list_.push_front(key);
     CacheEntry entry(data, content_type);
-    cache_[key] = {entry, lru_list_.begin()};
+    cache_[key] = std::make_pair(entry, lru_list_.begin());
     current_size_ += entry_size;
 }
 
