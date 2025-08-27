@@ -13,6 +13,7 @@
 #include "http_response.h"
 #include "file_handler.h"
 #include "rate_limiter.h"
+#include "logger.h"
 
 struct Connection {
     int fd;
