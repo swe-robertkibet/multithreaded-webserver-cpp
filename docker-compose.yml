@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # Production web server
+  webserver:
+    build:
+      context: .
+      target: production
+    container_name: cpp_webserver
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./public:/app/public:ro
+      - ./logs:/app/logs
+      - ./config.json:/app/config.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    environment:
+      - SERVER_PORT=8080
+      - SERVER_THREADS=0  # Auto-detect
+    networks:
+      - webserver_network
+
+  # Development container
+  webserver-dev:
+    build:
+      context: .
+      target: development
+    container_name: cpp_webserver_dev
+    ports:
+      - "8080:8080"
+      - "8081:8081"  # Alternative port for testing
+    volumes:
+      - .:/build
+      - ./logs:/build/logs
+    working_dir: /build
+    tty: true
+    stdin_open: true
+    networks:
+      - webserver_network
+    profiles:
+      - development
+
+  # Nginx for comparison benchmarking
+  nginx-benchmark:
+    image: nginx:alpine
+    container_name: nginx_benchmark
+    ports:
+      - "80:80"
+    volumes:
+      - ./public:/usr/share/nginx/html:ro
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - webserver_network
+    profiles:
+      - benchmark
+
+  # Load testing container
+  load-tester:
+    image: williamyeh/wrk
+    container_name: load_tester
+    depends_on:
+      - webserver
+    networks:
+      - webserver_network
+    profiles:
+      - benchmark
+    command: >
+      sh -c "
+        echo 'Waiting for server to be ready...' &&
+        sleep 10 &&
+        echo 'Running load test...' &&
+        wrk -t10 -c1000 -d30s --latency http://webserver:8080/
+      "
+
+  # Monitoring with basic metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - webserver_network
+    profiles:
+      - monitoring
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+
+networks:
+  webserver_network:
+    driver: bridge

@@ -1,0 +1,51 @@
+# Build artifacts
+build/
+*.o
+*.so
+*.a
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Test results
+test_results/
+results/
+*.gcov
+*.gcda
+*.gcno
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Documentation
+docs/
+README.md
+*.md
+
+# Scripts (except essential ones)
+scripts/benchmark.sh
+scripts/stress_test.sh
+scripts/quick_bench.sh
