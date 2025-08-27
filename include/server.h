@@ -12,6 +12,7 @@
 #include "http_request.h"
 #include "http_response.h"
 #include "file_handler.h"
+#include "rate_limiter.h"
 
 struct Connection {
     int fd;
@@ -40,6 +41,7 @@ private:
     void close_connection(int client_fd);
     void cleanup_inactive_connections();
     HttpResponse handle_api_request(const HttpRequest& request);
+    std::string get_client_ip(int client_fd);
     
     int server_fd_;
     int port_;
@@ -50,6 +52,7 @@ private:
     std::unique_ptr<ThreadPool> thread_pool_;
     std::unique_ptr<std::thread> event_thread_;
     std::unique_ptr<FileHandler> file_handler_;
+    std::unique_ptr<RateLimiter> rate_limiter_;
     
     std::unordered_map<int, std::shared_ptr<Connection>> connections_;
     std::mutex connections_mutex_;

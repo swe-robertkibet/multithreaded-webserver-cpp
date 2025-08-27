@@ -19,6 +19,7 @@ Server::Server(int port, const std::string& host, size_t thread_count)
     epoll_ = std::make_unique<EpollWrapper>();
     thread_pool_ = std::make_unique<ThreadPool>(thread_count);
     file_handler_ = std::make_unique<FileHandler>("./public", "index.html", true, 100);
+    rate_limiter_ = std::make_unique<RateLimiter>(100.0, 200.0, false); // Disabled by default
 }
 
 Server::~Server() {
@@ -200,6 +201,18 @@ void Server::handle_client_data(int client_fd) {
 void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     if (!conn) return;
     
+    // Rate limiting check
+    std::string client_ip = get_client_ip(conn->fd);
+    if (!rate_limiter_->is_allowed(client_ip)) {
+        HttpResponse response = HttpResponse::create_error_response(HttpStatus::SERVICE_UNAVAILABLE, "Rate limit exceeded");
+        response.set_header("Retry-After", "60");
+        
+        std::string response_str = response.to_string();
+        send(conn->fd, response_str.c_str(), response_str.length(), 0);
+        close_connection(conn->fd);
+        return;
+    }
+    
     HttpRequest request = HttpRequest::parse(conn->buffer);
     HttpResponse response;
     
@@ -283,6 +296,10 @@ HttpResponse Server::handle_api_request(const HttpRequest& request) {
         size_t cache_hits = 0, cache_misses = 0, cache_entries = 0, cache_memory = 0;
         file_handler_->get_cache_stats(cache_hits, cache_misses, cache_entries, cache_memory);
         
+        // Get rate limiting statistics
+        size_t total_requests = 0, blocked_requests = 0, active_clients = 0;
+        rate_limiter_->get_stats(total_requests, blocked_requests, active_clients);
+        
         std::ostringstream body;
         body << "{\n";
         body << "  \"server\": \"MultithreadedWebServer/1.0\",\n";
@@ -291,7 +308,7 @@ HttpResponse Server::handle_api_request(const HttpRequest& request) {
         body << "  \"queue_size\": " << thread_pool_->get_queue_size() << ",\n";
         body << "  \"active_connections\": " << connections_.size() << ",\n";
         body << "  \"document_root\": \"" << file_handler_->get_document_root() << "\",\n";
-        body << "  \"architecture\": \"epoll + thread_pool + lru_cache\",\n";
+        body << "  \"architecture\": \"epoll + thread_pool + lru_cache + rate_limiter\",\n";
         body << "  \"http_version\": \"HTTP/1.1\",\n";
         body << "  \"cache\": {\n";
         body << "    \"hits\": " << cache_hits << ",\n";
@@ -301,6 +318,18 @@ HttpResponse Server::handle_api_request(const HttpRequest& request) {
         if (cache_hits + cache_misses > 0) {
             double hit_ratio = static_cast<double>(cache_hits) / (cache_hits + cache_misses) * 100.0;
             body << ",\n    \"hit_ratio_percent\": " << std::fixed << std::setprecision(1) << hit_ratio;
+        }
+        body << "\n  },\n";
+        body << "  \"rate_limiter\": {\n";
+        body << "    \"enabled\": " << (rate_limiter_->is_enabled() ? "true" : "false") << ",\n";
+        body << "    \"requests_per_second\": " << rate_limiter_->get_rate() << ",\n";
+        body << "    \"burst_capacity\": " << rate_limiter_->get_burst_capacity() << ",\n";
+        body << "    \"total_requests\": " << total_requests << ",\n";
+        body << "    \"blocked_requests\": " << blocked_requests << ",\n";
+        body << "    \"active_clients\": " << active_clients;
+        if (total_requests > 0) {
+            double block_ratio = static_cast<double>(blocked_requests) / total_requests * 100.0;
+            body << ",\n    \"block_ratio_percent\": " << std::fixed << std::setprecision(1) << block_ratio;
         }
         body << "\n  }\n";
         body << "}\n";
@@ -312,4 +341,18 @@ HttpResponse Server::handle_api_request(const HttpRequest& request) {
     }
     
     return HttpResponse::create_error_response(HttpStatus::NOT_FOUND, "API endpoint not found");
+}
+
+std::string Server::get_client_ip(int client_fd) {
+    sockaddr_in client_addr{};
+    socklen_t addr_len = sizeof(client_addr);
+    
+    if (getpeername(client_fd, reinterpret_cast<sockaddr*>(&client_addr), &addr_len) == 0) {
+        char ip_str[INET_ADDRSTRLEN];
+        if (inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN)) {
+            return std::string(ip_str);
+        }
+    }
+    
+    return "unknown";
 }
