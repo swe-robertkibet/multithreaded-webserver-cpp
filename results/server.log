@@ -1,0 +1,5 @@
+ThreadPool initialized with 16 threads
+LRU Cache initialized: 100MB max, 300s TTL
+Starting high-performance HTTP server on port 8080...
+Server started successfully with epoll + thread pool.
+Press Ctrl+C to stop.
