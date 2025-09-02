@@ -1,9 +1,9 @@
 # High-Performance Multithreaded Web Server in C++
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![C++17](https://img.shields.io/badge/C%2B%2B-17-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
-[![Performance](https://img.shields.io/badge/performance-41K%20req%2Fs-orange)]()
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-blue)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp/blob/main/LICENSE)
+[![Performance](https://img.shields.io/badge/performance-41K%20req%2Fs-orange)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 
 A production-ready, high-performance HTTP web server implemented in modern C++17, featuring epoll-based event handling, thread pooling, intelligent caching, and comprehensive security features.
 
@@ -151,7 +151,7 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/swe-robertkibet/multithreaded-webserver-cpp.git
 cd multithreaded-webserver-cpp
 
 # Build the project
@@ -379,7 +379,7 @@ valgrind --leak-check=full ./webserver
 
 ## :page_facing_up: License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/swe-robertkibet/multithreaded-webserver-cpp/blob/main/LICENSE) file for details.
 
 ## :pray: Acknowledgments
 
@@ -391,7 +391,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## :telephone_receiver: Support
 
 For issues and questions:
-- Create an issue on GitHub
+- [Create an issue on GitHub](https://github.com/swe-robertkibet/multithreaded-webserver-cpp/issues)
 - Check existing documentation
 - Review performance benchmarks
 - Consult architecture diagrams
