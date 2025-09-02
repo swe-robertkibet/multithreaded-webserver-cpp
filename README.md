@@ -17,51 +17,31 @@ A production-ready, high-performance HTTP web server implemented in modern C++17
 
 ## :building_construction: Architecture
 
+The multithreaded web server employs a sophisticated, layered architecture designed for high performance, scalability, and maintainability. The following diagrams illustrate the complete system design from different perspectives.
+
 ### System Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Client Requests                          │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                    Main Event Loop                              │
-│                    (epoll-based)                               │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                   Connection Manager                            │
-│  • Non-blocking I/O        • Keep-alive support               │
-│  • Connection pooling      • Timeout management               │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                    Thread Pool                                 │
-│  • Worker threads          • Task queue management            │
-│  • Load balancing          • Auto-scaling                     │
-└─────────────┬───────────────────────────┬───────────────────────┘
-              │                           │
-  ┌───────────▼──────────┐    ┌──────────▼───────────┐
-  │   HTTP Processing    │    │   File Handling      │
-  │  • Request parsing   │    │  • Static content    │
-  │  • Response building │    │  • MIME types        │
-  │  • Header management │    │  • Directory listing │
-  └───────────┬──────────┘    └──────────┬───────────┘
-              │                          │
-  ┌───────────▼──────────┐    ┌──────────▼───────────┐
-  │    Rate Limiter      │    │     LRU Cache        │
-  │  • Token bucket      │    │  • Memory management │
-  │  • Per-IP limiting   │    │  • TTL expiration    │
-  │  • Configurable      │    │  • Hit ratio stats   │
-  └──────────────────────┘    └──────────────────────┘
-              │
-  ┌───────────▼──────────┐
-  │   Structured Logging │
-  │  • Access logs       │
-  │  • Error logs        │
-  │  • Performance stats │
-  └──────────────────────┘
-```
+This comprehensive diagram shows the complete request processing pipeline from client connection through response delivery, including all major components and their interactions.
+
+![Main Architecture Diagram](images/Main%20Architecture%20Diagram.png)
+
+*Complete system architecture showing the epoll-based event loop, thread pool management, request processing pipeline, caching system, rate limiting, and logging infrastructure.*
+
+### Component Layer Architecture  
+
+The system is organized into distinct layers, each with specific responsibilities and clear interfaces between components.
+
+![Detailed Component Interaction Diagram](images/Detailed%20Component%20Interaction%20Diagram.png)
+
+*Layer-based architecture view demonstrating the separation of concerns across Client Layer, Network Layer, Threading Layer, Application Layer, and Data Layer with optimized component interactions.*
+
+### Request Processing Flow
+
+This detailed flowchart illustrates the complete request lifecycle with decision points, performance timings, and error handling paths.
+
+![Performance Flow Diagram](images/Performance%20Flow%20Diagram.png)
+
+*Detailed request processing flow showing performance characteristics: ~0.1ms cache hits, ~0.5ms parsing, ~5-20ms file system operations, with comprehensive error handling and connection management.*
 
 ### Core Components
 
