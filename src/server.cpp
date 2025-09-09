@@ -404,7 +404,6 @@ void Server::send_response_async(std::shared_ptr<Connection> conn) {
     if (sent == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             // Socket buffer full, add EPOLLOUT and wait for writability
-            std::cerr << "[AsyncWrite] fd=" << conn->fd << " EAGAIN, remaining=" << remaining << " bytes, waiting for EPOLLOUT" << std::endl;
             epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR);
             return;
         } else if (errno == EPIPE || errno == ECONNRESET) {
@@ -438,7 +437,6 @@ void Server::send_response_async(std::shared_ptr<Connection> conn) {
         // Check if we've sent everything
         if (conn->response_offset >= response.length()) {
             // All data sent, clean up
-            std::cerr << "[AsyncWrite] fd=" << conn->fd << " SUCCESS: Sent complete response (" << response.length() << " bytes)" << std::endl;
             conn->has_pending_write = false;
             conn->pending_response.clear();
             conn->response_offset = 0;
@@ -492,8 +490,6 @@ void Server::close_connection(int client_fd) {
     
     if (has_pending_write) {
         std::cerr << "[CloseConn] fd=" << client_fd << " WARNING: Closing connection with pending write!" << std::endl;
-    } else {
-        std::cerr << "[CloseConn] fd=" << client_fd << " normal close" << std::endl;
     }
     
     connections_.erase(it);
@@ -525,9 +521,6 @@ void Server::cleanup_inactive_connections() {
             
             if (elapsed.count() > CONNECTION_TIMEOUT_SECONDS && !has_pending_write) {
                 inactive_fds.push_back(fd);
-                std::cerr << "[Cleanup] fd=" << fd << " timeout after " << elapsed.count() << "s (no pending write)" << std::endl;
-            } else if (has_pending_write) {
-                std::cerr << "[Cleanup] fd=" << fd << " timeout after " << elapsed.count() << "s but has pending write, keeping alive" << std::endl;
             }
         }
     }
