@@ -38,6 +38,7 @@ bool EpollWrapper::add_fd(int fd, uint32_t events, void* data) {
     }
     
     if (data) {
+        std::lock_guard<std::mutex> lock(fd_data_mutex_);
         fd_data_[fd] = data;
     }
     
@@ -55,6 +56,7 @@ bool EpollWrapper::modify_fd(int fd, uint32_t events, void* data) {
     }
     
     if (data) {
+        std::lock_guard<std::mutex> lock(fd_data_mutex_);
         fd_data_[fd] = data;
     }
     
@@ -62,16 +64,21 @@ bool EpollWrapper::modify_fd(int fd, uint32_t events, void* data) {
 }
 
 bool EpollWrapper::remove_fd(int fd) {
+    bool epoll_success = true;
+    
     if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr) == -1) {
         if (errno != EBADF && errno != ENOENT) {
             std::cerr << "Failed to remove fd " << fd << " from epoll: " << strerror(errno) << std::endl;
         }
-        fd_data_.erase(fd);
-        return false;
+        epoll_success = false;
     }
     
-    fd_data_.erase(fd);
-    return true;
+    {
+        std::lock_guard<std::mutex> lock(fd_data_mutex_);
+        fd_data_.erase(fd);
+    }
+    
+    return epoll_success;
 }
 
 int EpollWrapper::wait_for_events(std::vector<Event>& events, int timeout_ms) {
@@ -87,11 +94,18 @@ int EpollWrapper::wait_for_events(std::vector<Event>& events, int timeout_ms) {
     events.clear();
     events.reserve(num_events);
     
+    // Protect fd_data_ access during event processing
+    std::lock_guard<std::mutex> lock(fd_data_mutex_);
+    
     for (int i = 0; i < num_events; ++i) {
         Event event{};
         event.fd = events_buffer_[i].data.fd;
         event.events = events_buffer_[i].events;
-        event.data = fd_data_[event.fd];
+        
+        // Safely access fd_data_ map
+        auto it = fd_data_.find(event.fd);
+        event.data = (it != fd_data_.end()) ? it->second : nullptr;
+        
         events.push_back(event);
     }
     
