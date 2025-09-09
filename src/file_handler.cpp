@@ -117,14 +117,41 @@ std::string FileHandler::resolve_path(const std::string& request_path) const {
 
 bool FileHandler::is_safe_path(const std::string& resolved_path) const {
     try {
+        // Get canonical root path
         std::filesystem::path canonical_root = std::filesystem::canonical(document_root_);
-        std::filesystem::path canonical_path = std::filesystem::canonical(resolved_path);
+        
+        // For resolved_path, only get canonical if it exists, otherwise use parent
+        std::filesystem::path path_to_check(resolved_path);
+        std::filesystem::path canonical_path;
+        
+        if (std::filesystem::exists(resolved_path)) {
+            canonical_path = std::filesystem::canonical(resolved_path);
+        } else {
+            // For non-existent paths, check if parent exists and is safe
+            auto parent_path = path_to_check.parent_path();
+            if (std::filesystem::exists(parent_path)) {
+                auto canonical_parent = std::filesystem::canonical(parent_path);
+                canonical_path = canonical_parent / path_to_check.filename();
+            } else {
+                // Neither file nor parent exists, check path structure only
+                std::filesystem::path abs_path = std::filesystem::absolute(resolved_path);
+                canonical_path = abs_path.lexically_normal();
+            }
+        }
         
         // Check if the resolved path is within the document root
         auto relative = std::filesystem::relative(canonical_path, canonical_root);
-        return !relative.empty() && relative.native()[0] != '.' && relative.native().find("..") == std::string::npos;
-    } catch (const std::exception&) {
-        // If canonical path resolution fails, assume it's not safe
+        if (relative.empty()) {
+            return false;
+        }
+        
+        // Check for path traversal attempts
+        std::string relative_str = relative.native();
+        return relative_str[0] != '.' && relative_str.find("..") == std::string::npos;
+        
+    } catch (const std::exception& e) {
+        // If path resolution fails, log and assume it's not safe
+        std::cerr << "Path safety check failed for " << resolved_path << ": " << e.what() << std::endl;
         return false;
     }
 }

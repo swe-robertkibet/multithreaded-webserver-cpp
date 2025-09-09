@@ -6,9 +6,30 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Build type options
+option(ENABLE_ASAN "Enable AddressSanitizer for debugging" OFF)
+option(ENABLE_TSAN "Enable ThreadSanitizer for debugging" OFF)
+option(DEBUG_BUILD "Enable debug build with symbols" OFF)
+
 # Compiler-specific options
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic -O3 -march=native)
+    if(DEBUG_BUILD)
+        add_compile_options(-Wall -Wextra -Wpedantic -g -O1 -fno-omit-frame-pointer)
+    else()
+        add_compile_options(-Wall -Wextra -Wpedantic -O3 -march=native)
+    endif()
+    
+    if(ENABLE_ASAN)
+        add_compile_options(-fsanitize=address -fsanitize=undefined)
+        add_link_options(-fsanitize=address -fsanitize=undefined)
+        set(CMAKE_BUILD_TYPE Debug)
+    endif()
+    
+    if(ENABLE_TSAN)
+        add_compile_options(-fsanitize=thread)
+        add_link_options(-fsanitize=thread)
+        set(CMAKE_BUILD_TYPE Debug)
+    endif()
 endif()
 
 # Include directories

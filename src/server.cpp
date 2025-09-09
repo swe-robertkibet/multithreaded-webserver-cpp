@@ -186,6 +186,7 @@ void Server::handle_accept() {
         }
         
         if (!epoll_->add_fd(client_fd, EPOLLIN | EPOLLHUP | EPOLLERR)) {
+            std::cerr << "Failed to add client_fd " << client_fd << " to epoll, closing connection" << std::endl;
             close(client_fd);
             continue;
         }
@@ -200,28 +201,59 @@ void Server::handle_accept() {
 
 void Server::handle_client_data(int client_fd) {
     std::shared_ptr<Connection> conn;
+    bool connection_exists = false;
+    
+    // Get connection with proper locking
     {
         std::lock_guard<std::mutex> lock(connections_mutex_);
         auto it = connections_.find(client_fd);
-        if (it == connections_.end()) {
-            return;
+        if (it != connections_.end()) {
+            conn = it->second;
+            connection_exists = true;
         }
-        conn = it->second;
+    }
+    
+    // Check if connection still valid before proceeding
+    if (!connection_exists || !conn) {
+        return;
     }
     
     char buffer[BUFFER_SIZE];
     ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);  // Leave space for null terminator
     
     if (bytes_received <= 0) {
+        // Connection closed or error
         close_connection(client_fd);
         return;
     }
     
-    // Append received bytes to connection buffer (thread-safe)
+    // Validate received bytes and append to connection buffer (thread-safe)
     if (bytes_received > 0 && bytes_received <= BUFFER_SIZE - 1) {
         bool should_process = false;
         {
             std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+            // Double-check connection is still valid after acquiring buffer lock
+            {
+                std::lock_guard<std::mutex> map_lock(connections_mutex_);
+                if (connections_.find(client_fd) == connections_.end()) {
+                    return; // Connection was closed while waiting for lock
+                }
+            }
+            
+            // Check buffer size limit to prevent memory exhaustion
+            if (conn->buffer.size() + bytes_received > MAX_REQUEST_SIZE) {
+                std::cerr << "Request too large, closing connection fd=" << client_fd << std::endl;
+                {
+                    std::lock_guard<std::mutex> map_lock2(connections_mutex_);
+                    if (connections_.find(client_fd) != connections_.end()) {
+                        connections_.erase(client_fd);
+                    }
+                }
+                epoll_->remove_fd(client_fd);
+                close(client_fd);
+                return;
+            }
+            
             conn->buffer.append(buffer, bytes_received);  // Append exact bytes received
             conn->last_activity = std::chrono::steady_clock::now();
             
@@ -359,7 +391,7 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
 }
 
 void Server::close_connection(int client_fd) {
-    std::lock_guard<std::mutex> lock(connections_mutex_);
+    std::unique_lock<std::mutex> lock(connections_mutex_);
     
     // Check if connection still exists (avoid double-close)
     auto it = connections_.find(client_fd);
@@ -367,14 +399,18 @@ void Server::close_connection(int client_fd) {
         return; // Already closed
     }
     
+    // Get the connection and remove from map immediately to prevent other threads from accessing it
+    auto conn = it->second;
+    connections_.erase(it);
+    lock.unlock(); // Release lock before potentially blocking operations
+    
     // Remove from epoll first, ignore errors (fd might already be closed)
     epoll_->remove_fd(client_fd);
     
     // Close the socket
-    close(client_fd);
-    
-    // Remove from connections map
-    connections_.erase(it);
+    if (close(client_fd) == -1 && errno != EBADF) {
+        std::cerr << "Warning: Error closing fd " << client_fd << ": " << strerror(errno) << std::endl;
+    }
 }
 
 void Server::cleanup_inactive_connections() {

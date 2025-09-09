@@ -1,6 +1,6 @@
 # Web Server Performance Benchmark Report
 
-Generated on: Tue Sep  9 09:16:52 EAT 2025
+Generated on: Tue Sep  9 16:21:12 EAT 2025
 
 ## Test Configuration
 - **Duration**: 30s
@@ -18,8 +18,8 @@ Generated on: Tue Sep  9 09:16:52 EAT 2025
 ### wrk Benchmark Results
 #### C++ Multithreaded Server (wrk)
 ```
-Requests/sec: 121122.29
-Transfer/sec:     45.63MB
+Requests/sec:  33438.80
+Transfer/sec:     12.63MB
 ```
 
 

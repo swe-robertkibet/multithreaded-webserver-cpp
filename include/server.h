@@ -62,4 +62,5 @@ private:
     static constexpr int BUFFER_SIZE = 4096;
     static constexpr int BACKLOG = 128;
     static constexpr int CONNECTION_TIMEOUT_SECONDS = 30;
+    static constexpr size_t MAX_REQUEST_SIZE = 64 * 1024; // 64KB max request size
 };
