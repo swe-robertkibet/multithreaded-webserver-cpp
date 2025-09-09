@@ -1,6 +1,6 @@
 # Web Server Performance Benchmark Report
 
-Generated on: Tue Sep  9 16:37:56 EAT 2025
+Generated on: Tue Sep  9 18:35:24 EAT 2025
 
 ## Test Configuration
 - **Duration**: 30s
@@ -18,17 +18,17 @@ Generated on: Tue Sep  9 16:37:56 EAT 2025
 ### wrk Benchmark Results
 #### C++ Multithreaded Server (wrk)
 ```
-Requests/sec:  82125.64
-Transfer/sec:    167.28MB
+Requests/sec:  71085.10
+Transfer/sec:    135.39MB
 ```
 
 
 ### ApacheBench Results
 #### C++ Multithreaded Server (ab)
 ```
-Requests per second:    9759.30 [#/sec] (mean)
-Time per request:       102.466 [ms] (mean)
-Time per request:       0.102 [ms] (mean, across all concurrent requests)
-Transfer rate:          21084.80 [Kbytes/sec] received
+Requests per second:    8177.39 [#/sec] (mean)
+Time per request:       122.288 [ms] (mean)
+Time per request:       0.122 [ms] (mean, across all concurrent requests)
+Transfer rate:          17706.66 [Kbytes/sec] received
 ```
 

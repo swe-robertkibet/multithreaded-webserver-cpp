@@ -12,7 +12,10 @@
 #include <sstream>
 #include <cstring>
 #include <chrono>
+#include <thread>
 #include <errno.h>
+#include <algorithm>
+#include <vector>
 
 Server::Server(int port, const std::string& host, size_t thread_count)
     : server_fd_(-1), port_(port), host_(host), running_(false) {
@@ -53,6 +56,15 @@ bool Server::start() {
     // Set TCP_NODELAY to reduce latency
     if (setsockopt(server_fd_, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt)) == -1) {
         std::cerr << "Warning: Could not set TCP_NODELAY: " << strerror(errno) << std::endl;
+    }
+    
+    // Increase socket send/receive buffers for high throughput
+    int buffer_size = 256 * 1024; // 256KB
+    if (setsockopt(server_fd_, SOL_SOCKET, SO_SNDBUF, &buffer_size, sizeof(buffer_size)) == -1) {
+        std::cerr << "Warning: Could not set SO_SNDBUF: " << strerror(errno) << std::endl;
+    }
+    if (setsockopt(server_fd_, SOL_SOCKET, SO_RCVBUF, &buffer_size, sizeof(buffer_size)) == -1) {
+        std::cerr << "Warning: Could not set SO_RCVBUF: " << strerror(errno) << std::endl;
     }
     
     sockaddr_in address{};
@@ -109,14 +121,14 @@ void Server::stop() {
         {
             std::lock_guard<std::mutex> lock(connections_mutex_);
             for (auto& [fd, conn] : connections_) {
-                epoll_->remove_fd(fd);  // Remove from epoll first
+                epoll_->remove_fd(fd);
                 close(fd);
             }
             connections_.clear();
         }
         
         if (server_fd_ != -1) {
-            epoll_->remove_fd(server_fd_);  // Remove server socket from epoll
+            epoll_->remove_fd(server_fd_);
             close(server_fd_);
             server_fd_ = -1;
         }
@@ -147,6 +159,9 @@ void Server::event_loop() {
                 if (event.events & (EPOLLIN | EPOLLHUP | EPOLLERR)) {
                     handle_client_data(event.fd);
                 }
+                if (event.events & EPOLLOUT) {
+                    handle_client_write(event.fd);
+                }
             }
         }
         
@@ -166,6 +181,16 @@ void Server::handle_accept() {
             }
             std::cerr << "Failed to accept connection: " << strerror(errno) << std::endl;
             continue;
+        }
+        
+        // Check connection limit to prevent resource exhaustion
+        {
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            if (connections_.size() >= MAX_CONNECTIONS) {
+                std::cerr << "[Accept] ERROR: Connection limit reached (" << connections_.size() << "/" << MAX_CONNECTIONS << "), rejecting fd=" << client_fd << std::endl;
+                close(client_fd);
+                continue;
+            }
         }
         
         if (!EpollWrapper::set_non_blocking(client_fd)) {
@@ -195,6 +220,7 @@ void Server::handle_accept() {
         {
             std::lock_guard<std::mutex> lock(connections_mutex_);
             connections_[client_fd] = connection;
+            // std::cerr << "[Accept] SUCCESS: fd=" << client_fd << " (total connections: " << connections_.size() << "/" << MAX_CONNECTIONS << ")" << std::endl;
         }
     }
 }
@@ -219,7 +245,7 @@ void Server::handle_client_data(int client_fd) {
     }
     
     char buffer[BUFFER_SIZE];
-    ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);  // Leave space for null terminator
+    ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);
     
     if (bytes_received <= 0) {
         // Connection closed or error
@@ -257,8 +283,11 @@ void Server::handle_client_data(int client_fd) {
             conn->buffer.append(buffer, bytes_received);  // Append exact bytes received
             conn->last_activity = std::chrono::steady_clock::now();
             
-            // Check if we have a complete HTTP request
-            should_process = (conn->buffer.find("\r\n\r\n") != std::string::npos);
+            // Check if we have a complete HTTP request and not already processing one
+            should_process = !conn->processing_request && is_http_request_complete(conn->buffer);
+            if (should_process) {
+                conn->processing_request = true;
+            }
         }
         
         if (should_process) {
@@ -284,8 +313,13 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     HttpResponse response;
     
     if (!request.is_valid()) {
+        // Log invalid requests only in debug mode to reduce spam under load
+        #ifdef DEBUG_INVALID_REQUESTS
+        std::cerr << "[Request] fd=" << conn->fd << " ERROR: Invalid HTTP request" << std::endl;
+        #endif
         response = HttpResponse::create_error_response(HttpStatus::BAD_REQUEST, "Invalid HTTP request");
     } else {
+        // std::cerr << "[Request] fd=" << conn->fd << " " << HttpRequest::method_to_string(request.get_method()) << " " << request.get_path() << std::endl;
         // Determine keep-alive based on request (thread-safe access)
         {
             std::lock_guard<std::mutex> conn_lock(conn->mutex_);
@@ -313,87 +347,146 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     // Set connection header based on keep-alive decision
     response.set_keep_alive(conn->keep_alive);
     
+    // Log response status
+    // std::cerr << "[Response] fd=" << conn->fd << " Status=" << static_cast<int>(response.get_status()) << " Size=" << response.get_body().size() << "B" << std::endl;
+    
     // Check if connection is still valid before sending
     {
         std::lock_guard<std::mutex> lock(connections_mutex_);
         if (connections_.find(conn->fd) == connections_.end()) {
-            // Connection already closed
+            std::cerr << "[Response] fd=" << conn->fd << " ERROR: Connection already closed" << std::endl;
+            // Reset processing flag since connection is invalid
+            {
+                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+                conn->processing_request = false;
+            }
             return;
         }
     }
     
-    std::string response_str = response.to_string();
-    
-    // Properly handle partial sends and socket errors
-    size_t total_sent = 0;
-    size_t total_length = response_str.length();
-    
-    while (total_sent < total_length) {
-        // Check if connection still exists before each send attempt
-        {
-            std::lock_guard<std::mutex> lock(connections_mutex_);
-            if (connections_.find(conn->fd) == connections_.end()) {
-                // Connection was closed during sending
-                return;
-            }
-        }
-        
-        ssize_t sent = send(conn->fd, response_str.c_str() + total_sent, 
-                           total_length - total_sent, MSG_NOSIGNAL);
-        
-        if (sent == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // Socket would block, try again later - for now, close connection
-                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-                conn->keep_alive = false;
-                break;
-            } else if (errno == EPIPE || errno == ECONNRESET) {
-                // Connection closed by peer
-                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-                conn->keep_alive = false;
-                break;
-            } else {
-                std::cerr << "Failed to send response: " << strerror(errno) << std::endl;
-                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-                conn->keep_alive = false;
-                break;
-            }
-        } else if (sent == 0) {
-            // Connection closed
-            std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-            conn->keep_alive = false;
-            break;
-        } else {
-            total_sent += sent;
-        }
-    }
-    
-    // Only consider successful if all data was sent
-    if (total_sent != total_length) {
-        std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-        conn->keep_alive = false;
-    }
-    
-    bool keep_connection_alive;
+    // Store response for async sending
     {
         std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-        keep_connection_alive = conn->keep_alive;
+        conn->pending_response = response.to_string();
+        conn->response_offset = 0;
+        conn->has_pending_write = true;
     }
     
-    if (!keep_connection_alive) {
-        close_connection(conn->fd);
-    } else {
-        // Clear buffer and update activity timestamp (thread-safe)
+    // Try to send immediately (non-blocking)
+    send_response_async(conn);
+    
+    // Clear input buffer and update activity (since we've processed the request)
+    {
         std::lock_guard<std::mutex> conn_lock(conn->mutex_);
         conn->buffer.clear();
+        conn->processing_request = false;
         conn->last_activity = std::chrono::steady_clock::now();
     }
+}
+
+void Server::send_response_async(std::shared_ptr<Connection> conn) {
+    if (!conn) return;
+    
+    std::unique_lock<std::mutex> conn_lock(conn->mutex_);
+    
+    if (!conn->has_pending_write) {
+        return; // Nothing to send
+    }
+    
+    const std::string& response = conn->pending_response;
+    size_t remaining = response.length() - conn->response_offset;
+    
+    if (remaining == 0) {
+        // All data sent, clean up
+        conn->has_pending_write = false;
+        conn->pending_response.clear();
+        conn->response_offset = 0;
+        
+        // Remove EPOLLOUT from events since we're done writing
+        epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLHUP | EPOLLERR);
+        
+        if (!conn->keep_alive) {
+            conn_lock.unlock();
+            close_connection(conn->fd);
+        }
+        return;
+    }
+    
+    // Try to send as much as possible
+    ssize_t sent = send(conn->fd, response.c_str() + conn->response_offset, remaining, MSG_NOSIGNAL);
+    
+    if (sent == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // Socket buffer full, add EPOLLOUT and wait for writability
+            epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR);
+            return;
+        } else if (errno == EPIPE || errno == ECONNRESET) {
+            // Connection closed by peer
+            std::cerr << "[Send] fd=" << conn->fd << " ERROR: Connection closed by peer (" << strerror(errno) << ")" << std::endl;
+            conn->keep_alive = false;
+            conn->has_pending_write = false;
+            conn_lock.unlock();
+            close_connection(conn->fd);
+            return;
+        } else {
+            // Other error
+            std::cerr << "[Send] fd=" << conn->fd << " ERROR: Failed to send response: " << strerror(errno) << std::endl;
+            conn->keep_alive = false;
+            conn->has_pending_write = false;
+            conn_lock.unlock();
+            close_connection(conn->fd);
+            return;
+        }
+    } else if (sent == 0) {
+        // Connection closed
+        conn->keep_alive = false;
+        conn->has_pending_write = false;
+        conn_lock.unlock();
+        close_connection(conn->fd);
+        return;
+    } else {
+        // Successfully sent some data
+        conn->response_offset += sent;
+        
+        // Check if we've sent everything
+        if (conn->response_offset >= response.length()) {
+            // All data sent, clean up
+            conn->has_pending_write = false;
+            conn->pending_response.clear();
+            conn->response_offset = 0;
+            
+            // Remove EPOLLOUT from events
+            epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLHUP | EPOLLERR);
+            
+            if (!conn->keep_alive) {
+                conn_lock.unlock();
+                close_connection(conn->fd);
+            }
+        } else {
+            // Still have data to send, ensure EPOLLOUT is monitored
+            epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR);
+        }
+    }
+}
+
+void Server::handle_client_write(int client_fd) {
+    std::shared_ptr<Connection> conn;
+    
+    {
+        std::lock_guard<std::mutex> lock(connections_mutex_);
+        auto it = connections_.find(client_fd);
+        if (it == connections_.end()) {
+            return; // Connection no longer exists
+        }
+        conn = it->second;
+    }
+    
+    send_response_async(conn);
 }
 
 void Server::close_connection(int client_fd) {
     std::unique_lock<std::mutex> lock(connections_mutex_);
     
-    // Check if connection still exists (avoid double-close)
     auto it = connections_.find(client_fd);
     if (it == connections_.end()) {
         return; // Already closed
@@ -401,10 +494,21 @@ void Server::close_connection(int client_fd) {
     
     // Get the connection and remove from map immediately to prevent other threads from accessing it
     auto conn = it->second;
-    connections_.erase(it);
-    lock.unlock(); // Release lock before potentially blocking operations
     
-    // Remove from epoll first, ignore errors (fd might already be closed)
+    // Check if we're closing a connection with pending writes (potential bug!)
+    bool has_pending_write = false;
+    {
+        std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+        has_pending_write = conn->has_pending_write;
+    }
+    
+    if (has_pending_write) {
+        std::cerr << "[CloseConn] fd=" << client_fd << " WARNING: Closing connection with pending write!" << std::endl;
+    }
+    
+    connections_.erase(it);
+    lock.unlock();
+    
     epoll_->remove_fd(client_fd);
     
     // Close the socket
@@ -421,7 +525,15 @@ void Server::cleanup_inactive_connections() {
         std::lock_guard<std::mutex> lock(connections_mutex_);
         for (const auto& [fd, conn] : connections_) {
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - conn->last_activity);
-            if (elapsed.count() > CONNECTION_TIMEOUT_SECONDS) {
+            
+            // Only timeout connections that don't have pending writes
+            bool has_pending_write = false;
+            {
+                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+                has_pending_write = conn->has_pending_write;
+            }
+            
+            if (elapsed.count() > CONNECTION_TIMEOUT_SECONDS && !has_pending_write) {
                 inactive_fds.push_back(fd);
             }
         }
@@ -472,4 +584,95 @@ HttpResponse Server::handle_api_request(const HttpRequest& request) {
     }
     
     return HttpResponse::create_error_response(HttpStatus::NOT_FOUND, "API endpoint not found");
+}
+
+bool Server::is_http_request_complete(const std::string& buffer) {
+    // Find the end of headers
+    size_t header_end = buffer.find("\r\n\r\n");
+    if (header_end == std::string::npos) {
+        return false;  // Headers not complete
+    }
+    
+    // Parse headers to extract Content-Length
+    std::string headers = buffer.substr(0, header_end);
+    std::istringstream header_stream(headers);
+    std::string line;
+    size_t content_length = 0;
+    bool has_content_length = false;
+    
+    // Skip first line (request line)
+    std::getline(header_stream, line);
+    
+    // Parse headers
+    while (std::getline(header_stream, line) && !line.empty()) {
+        // Remove carriage return if present
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        
+        size_t colon_pos = line.find(':');
+        if (colon_pos != std::string::npos) {
+            std::string name = line.substr(0, colon_pos);
+            std::string value = line.substr(colon_pos + 1);
+            
+            // Trim whitespace
+            name.erase(name.find_last_not_of(" \t") + 1);
+            value.erase(0, value.find_first_not_of(" \t"));
+            value.erase(value.find_last_not_of(" \t") + 1);
+            
+            // Convert to lowercase for comparison
+            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            
+            if (name == "content-length") {
+                try {
+                    content_length = std::stoull(value);
+                    has_content_length = true;
+                } catch (const std::exception&) {
+                    // Invalid content-length, treat as no body
+                    content_length = 0;
+                }
+                break;
+            }
+        }
+    }
+    
+    // Calculate expected total size
+    size_t expected_size = header_end + 4; // +4 for "\r\n\r\n"
+    if (has_content_length) {
+        expected_size += content_length;
+    }
+    
+    // Check if we have all data
+    return buffer.size() >= expected_size;
+}
+
+bool Server::is_likely_http_request(const std::string& buffer) {
+    if (buffer.empty()) return false;
+    
+    // Check for minimum HTTP request line
+    size_t first_line_end = buffer.find('\n');
+    if (first_line_end == std::string::npos && buffer.size() < 16) {
+        return false; // Too short to be a valid request line
+    }
+    
+    std::string first_line = (first_line_end != std::string::npos) 
+        ? buffer.substr(0, first_line_end) 
+        : buffer;
+    
+    // Remove carriage return if present
+    if (!first_line.empty() && first_line.back() == '\r') {
+        first_line.pop_back();
+    }
+    
+    // Quick check for HTTP method at the start
+    static const std::vector<std::string> methods = {"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"};
+    for (const auto& method : methods) {
+        if (first_line.compare(0, method.length(), method) == 0 && 
+            first_line.size() > method.length() && 
+            first_line[method.length()] == ' ') {
+            return true;
+        }
+    }
+    
+    return false;
 }

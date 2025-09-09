@@ -20,10 +20,18 @@ struct Connection {
     std::string buffer;
     bool keep_alive;
     std::chrono::steady_clock::time_point last_activity;
-    mutable std::mutex mutex_;  // Protect connection state from concurrent access
+    mutable std::mutex mutex_;
+    
+    // Fields for handling partial writes
+    std::string pending_response;
+    size_t response_offset;
+    bool has_pending_write;
+    bool processing_request;
     
     Connection(int socket_fd) : fd(socket_fd), keep_alive(false), 
-                               last_activity(std::chrono::steady_clock::now()) {}
+                               last_activity(std::chrono::steady_clock::now()),
+                               response_offset(0), has_pending_write(false), 
+                               processing_request(false) {}
 };
 
 class Server {
@@ -40,10 +48,14 @@ private:
     void handle_accept();
     void handle_client_data(int client_fd);
     void handle_client_request(std::shared_ptr<Connection> conn);
+    void handle_client_write(int client_fd);
+    void send_response_async(std::shared_ptr<Connection> conn);
     void close_connection(int client_fd);
     void cleanup_inactive_connections();
     HttpResponse handle_api_request(const HttpRequest& request);
     std::string get_client_ip(int client_fd);
+    bool is_http_request_complete(const std::string& buffer);
+    bool is_likely_http_request(const std::string& buffer);
     
     int server_fd_;
     int port_;
@@ -60,7 +72,8 @@ private:
     std::mutex connections_mutex_;
     
     static constexpr int BUFFER_SIZE = 4096;
-    static constexpr int BACKLOG = 128;
+    static constexpr int BACKLOG = 1024;
     static constexpr int CONNECTION_TIMEOUT_SECONDS = 30;
-    static constexpr size_t MAX_REQUEST_SIZE = 64 * 1024; // 64KB max request size
+    static constexpr size_t MAX_REQUEST_SIZE = 64 * 1024;
+    static constexpr size_t MAX_CONNECTIONS = 2000;
 };

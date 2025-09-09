@@ -35,6 +35,7 @@ public:
     
     bool is_keep_alive() const;
     bool is_valid() const { return valid_; }
+    bool is_request_valid() const;
     
     static std::string method_to_string(HttpMethod method);
     static HttpMethod string_to_method(const std::string& method_str);
