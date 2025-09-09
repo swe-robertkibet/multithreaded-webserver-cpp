@@ -20,7 +20,7 @@ struct Connection {
     std::string buffer;
     bool keep_alive;
     std::chrono::steady_clock::time_point last_activity;
-    mutable std::mutex mutex_;  // Protect connection state from concurrent access
+    mutable std::mutex mutex_;
     
     Connection(int socket_fd) : fd(socket_fd), keep_alive(false), 
                                last_activity(std::chrono::steady_clock::now()) {}
@@ -60,7 +60,8 @@ private:
     std::mutex connections_mutex_;
     
     static constexpr int BUFFER_SIZE = 4096;
-    static constexpr int BACKLOG = 128;
+    static constexpr int BACKLOG = 1024;
     static constexpr int CONNECTION_TIMEOUT_SECONDS = 30;
-    static constexpr size_t MAX_REQUEST_SIZE = 64 * 1024; // 64KB max request size
+    static constexpr size_t MAX_REQUEST_SIZE = 64 * 1024;
+    static constexpr size_t MAX_CONNECTIONS = 2000;
 };
