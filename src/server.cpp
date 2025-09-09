@@ -157,6 +157,9 @@ void Server::event_loop() {
                 if (event.events & (EPOLLIN | EPOLLHUP | EPOLLERR)) {
                     handle_client_data(event.fd);
                 }
+                if (event.events & EPOLLOUT) {
+                    handle_client_write(event.fd);
+                }
             }
         }
         
@@ -348,86 +351,123 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
         }
     }
     
-    std::string response_str = response.to_string();
-    
-    // Properly handle partial sends and socket errors with retry logic
-    size_t total_sent = 0;
-    size_t total_length = response_str.length();
-    int retry_count = 0;
-    const int MAX_RETRIES = 3;
-    
-    while (total_sent < total_length) {
-        // Check if connection still exists before each send attempt
-        {
-            std::lock_guard<std::mutex> lock(connections_mutex_);
-            if (connections_.find(conn->fd) == connections_.end()) {
-                // Connection was closed during sending
-                return;
-            }
-        }
-        
-        ssize_t sent = send(conn->fd, response_str.c_str() + total_sent, 
-                           total_length - total_sent, MSG_NOSIGNAL);
-        
-        if (sent == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // Socket would block, retry a few times with small delay
-                retry_count++;
-                if (retry_count <= MAX_RETRIES) {
-                    std::cerr << "[Send] fd=" << conn->fd << " EAGAIN retry " << retry_count << "/" << MAX_RETRIES << std::endl;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    continue;
-                } else {
-                    std::cerr << "[Send] fd=" << conn->fd << " ERROR: Max retries reached for EAGAIN" << std::endl;
-                    std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-                    conn->keep_alive = false;
-                    break;
-                }
-            } else if (errno == EPIPE || errno == ECONNRESET) {
-                // Connection closed by peer
-                std::cerr << "[Send] fd=" << conn->fd << " ERROR: Connection closed by peer (" << strerror(errno) << ")" << std::endl;
-                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-                conn->keep_alive = false;
-                break;
-            } else {
-                std::cerr << "[Send] fd=" << conn->fd << " ERROR: Failed to send response: " << strerror(errno) << std::endl;
-                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-                conn->keep_alive = false;
-                break;
-            }
-        } else if (sent == 0) {
-            // Connection closed
-            std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-            conn->keep_alive = false;
-            break;
-        } else {
-            total_sent += sent;
-        }
-    }
-    
-    // Only consider successful if all data was sent
-    if (total_sent != total_length) {
-        std::cerr << "[Send] fd=" << conn->fd << " ERROR: Incomplete send " << total_sent << "/" << total_length << " bytes" << std::endl;
-        std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-        conn->keep_alive = false;
-    } else {
-        // std::cerr << "[Send] fd=" << conn->fd << " SUCCESS: Sent " << total_sent << " bytes" << std::endl;
-    }
-    
-    bool keep_connection_alive;
+    // Store response for async sending
     {
         std::lock_guard<std::mutex> conn_lock(conn->mutex_);
-        keep_connection_alive = conn->keep_alive;
+        conn->pending_response = response.to_string();
+        conn->response_offset = 0;
+        conn->has_pending_write = true;
     }
     
-    if (!keep_connection_alive) {
-        close_connection(conn->fd);
-    } else {
-        // Clear buffer and update activity timestamp (thread-safe)
+    // Try to send immediately (non-blocking)
+    send_response_async(conn);
+    
+    // Clear input buffer and update activity (since we've processed the request)
+    {
         std::lock_guard<std::mutex> conn_lock(conn->mutex_);
         conn->buffer.clear();
         conn->last_activity = std::chrono::steady_clock::now();
     }
+}
+
+void Server::send_response_async(std::shared_ptr<Connection> conn) {
+    if (!conn) return;
+    
+    std::unique_lock<std::mutex> conn_lock(conn->mutex_);
+    
+    if (!conn->has_pending_write) {
+        return; // Nothing to send
+    }
+    
+    const std::string& response = conn->pending_response;
+    size_t remaining = response.length() - conn->response_offset;
+    
+    if (remaining == 0) {
+        // All data sent, clean up
+        conn->has_pending_write = false;
+        conn->pending_response.clear();
+        conn->response_offset = 0;
+        
+        // Remove EPOLLOUT from events since we're done writing
+        epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLHUP | EPOLLERR);
+        
+        if (!conn->keep_alive) {
+            conn_lock.unlock();
+            close_connection(conn->fd);
+        }
+        return;
+    }
+    
+    // Try to send as much as possible
+    ssize_t sent = send(conn->fd, response.c_str() + conn->response_offset, remaining, MSG_NOSIGNAL);
+    
+    if (sent == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // Socket buffer full, add EPOLLOUT and wait for writability
+            epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR);
+            return;
+        } else if (errno == EPIPE || errno == ECONNRESET) {
+            // Connection closed by peer
+            std::cerr << "[Send] fd=" << conn->fd << " ERROR: Connection closed by peer (" << strerror(errno) << ")" << std::endl;
+            conn->keep_alive = false;
+            conn->has_pending_write = false;
+            conn_lock.unlock();
+            close_connection(conn->fd);
+            return;
+        } else {
+            // Other error
+            std::cerr << "[Send] fd=" << conn->fd << " ERROR: Failed to send response: " << strerror(errno) << std::endl;
+            conn->keep_alive = false;
+            conn->has_pending_write = false;
+            conn_lock.unlock();
+            close_connection(conn->fd);
+            return;
+        }
+    } else if (sent == 0) {
+        // Connection closed
+        conn->keep_alive = false;
+        conn->has_pending_write = false;
+        conn_lock.unlock();
+        close_connection(conn->fd);
+        return;
+    } else {
+        // Successfully sent some data
+        conn->response_offset += sent;
+        
+        // Check if we've sent everything
+        if (conn->response_offset >= response.length()) {
+            // All data sent, clean up
+            conn->has_pending_write = false;
+            conn->pending_response.clear();
+            conn->response_offset = 0;
+            
+            // Remove EPOLLOUT from events
+            epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLHUP | EPOLLERR);
+            
+            if (!conn->keep_alive) {
+                conn_lock.unlock();
+                close_connection(conn->fd);
+            }
+        } else {
+            // Still have data to send, ensure EPOLLOUT is monitored
+            epoll_->modify_fd(conn->fd, EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR);
+        }
+    }
+}
+
+void Server::handle_client_write(int client_fd) {
+    std::shared_ptr<Connection> conn;
+    
+    {
+        std::lock_guard<std::mutex> lock(connections_mutex_);
+        auto it = connections_.find(client_fd);
+        if (it == connections_.end()) {
+            return; // Connection no longer exists
+        }
+        conn = it->second;
+    }
+    
+    send_response_async(conn);
 }
 
 void Server::close_connection(int client_fd) {

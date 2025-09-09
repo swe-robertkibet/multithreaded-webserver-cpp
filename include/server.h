@@ -22,8 +22,14 @@ struct Connection {
     std::chrono::steady_clock::time_point last_activity;
     mutable std::mutex mutex_;
     
+    // Fields for handling partial writes
+    std::string pending_response;
+    size_t response_offset;
+    bool has_pending_write;
+    
     Connection(int socket_fd) : fd(socket_fd), keep_alive(false), 
-                               last_activity(std::chrono::steady_clock::now()) {}
+                               last_activity(std::chrono::steady_clock::now()),
+                               response_offset(0), has_pending_write(false) {}
 };
 
 class Server {
@@ -40,6 +46,8 @@ private:
     void handle_accept();
     void handle_client_data(int client_fd);
     void handle_client_request(std::shared_ptr<Connection> conn);
+    void handle_client_write(int client_fd);
+    void send_response_async(std::shared_ptr<Connection> conn);
     void close_connection(int client_fd);
     void cleanup_inactive_connections();
     HttpResponse handle_api_request(const HttpRequest& request);
