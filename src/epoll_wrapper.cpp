@@ -29,7 +29,11 @@ bool EpollWrapper::add_fd(int fd, uint32_t events, void* data) {
     event.data.fd = fd;
     
     if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &event) == -1) {
-        std::cerr << "Failed to add fd " << fd << " to epoll: " << strerror(errno) << std::endl;
+        if (errno == ENOMEM || errno == ENOSPC) {
+            std::cerr << "Epoll resource exhaustion (fd=" << fd << "): " << strerror(errno) << std::endl;
+        } else {
+            std::cerr << "Failed to add fd " << fd << " to epoll: " << strerror(errno) << std::endl;
+        }
         return false;
     }
     
