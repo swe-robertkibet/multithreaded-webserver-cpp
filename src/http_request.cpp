@@ -41,7 +41,7 @@ HttpRequest HttpRequest::parse(const std::string& raw_request) {
     
     request.body_ = body;
     request.parse_query_string();
-    request.valid_ = (request.method_ != HttpMethod::UNKNOWN && !request.path_.empty());
+    request.valid_ = request.is_request_valid();
     
     return request;
 }
@@ -185,4 +185,47 @@ HttpMethod HttpRequest::string_to_method(const std::string& method_str) {
     if (method_str == "OPTIONS") return HttpMethod::OPTIONS;
     
     return HttpMethod::UNKNOWN;
+}
+
+bool HttpRequest::is_request_valid() const {
+    // Basic requirements
+    if (method_ == HttpMethod::UNKNOWN) {
+        return false;
+    }
+    
+    // Path must exist and start with /
+    if (path_.empty() || path_[0] != '/') {
+        return false;
+    }
+    
+    // Version must be HTTP/1.0 or HTTP/1.1
+    if (version_ != "HTTP/1.0" && version_ != "HTTP/1.1") {
+        return false;
+    }
+    
+    // Path validation - reject paths with dangerous characters
+    for (char c : path_) {
+        if (c < 0x20 || c == 0x7F) { // Control characters
+            return false;
+        }
+    }
+    
+    // For methods that require a body, validate Content-Length if present
+    if (method_ == HttpMethod::POST || method_ == HttpMethod::PUT) {
+        auto content_length_header = get_header("content-length");
+        if (!content_length_header.empty()) {
+            try {
+                size_t content_length = std::stoull(content_length_header);
+                if (body_.size() != content_length) {
+                    // Body size mismatch (might be incomplete request)
+                    return body_.size() >= content_length;
+                }
+            } catch (const std::exception&) {
+                // Invalid Content-Length header
+                return false;
+            }
+        }
+    }
+    
+    return true;
 }

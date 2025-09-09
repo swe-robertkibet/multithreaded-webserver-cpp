@@ -26,10 +26,12 @@ struct Connection {
     std::string pending_response;
     size_t response_offset;
     bool has_pending_write;
+    bool processing_request;
     
     Connection(int socket_fd) : fd(socket_fd), keep_alive(false), 
                                last_activity(std::chrono::steady_clock::now()),
-                               response_offset(0), has_pending_write(false) {}
+                               response_offset(0), has_pending_write(false), 
+                               processing_request(false) {}
 };
 
 class Server {
@@ -52,6 +54,8 @@ private:
     void cleanup_inactive_connections();
     HttpResponse handle_api_request(const HttpRequest& request);
     std::string get_client_ip(int client_fd);
+    bool is_http_request_complete(const std::string& buffer);
+    bool is_likely_http_request(const std::string& buffer);
     
     int server_fd_;
     int port_;

@@ -14,6 +14,8 @@
 #include <chrono>
 #include <thread>
 #include <errno.h>
+#include <algorithm>
+#include <vector>
 
 Server::Server(int port, const std::string& host, size_t thread_count)
     : server_fd_(-1), port_(port), host_(host), running_(false) {
@@ -281,8 +283,11 @@ void Server::handle_client_data(int client_fd) {
             conn->buffer.append(buffer, bytes_received);  // Append exact bytes received
             conn->last_activity = std::chrono::steady_clock::now();
             
-            // Check if we have a complete HTTP request
-            should_process = (conn->buffer.find("\r\n\r\n") != std::string::npos);
+            // Check if we have a complete HTTP request and not already processing one
+            should_process = !conn->processing_request && is_http_request_complete(conn->buffer);
+            if (should_process) {
+                conn->processing_request = true;
+            }
         }
         
         if (should_process) {
@@ -308,7 +313,10 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     HttpResponse response;
     
     if (!request.is_valid()) {
+        // Log invalid requests only in debug mode to reduce spam under load
+        #ifdef DEBUG_INVALID_REQUESTS
         std::cerr << "[Request] fd=" << conn->fd << " ERROR: Invalid HTTP request" << std::endl;
+        #endif
         response = HttpResponse::create_error_response(HttpStatus::BAD_REQUEST, "Invalid HTTP request");
     } else {
         // std::cerr << "[Request] fd=" << conn->fd << " " << HttpRequest::method_to_string(request.get_method()) << " " << request.get_path() << std::endl;
@@ -347,6 +355,11 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
         std::lock_guard<std::mutex> lock(connections_mutex_);
         if (connections_.find(conn->fd) == connections_.end()) {
             std::cerr << "[Response] fd=" << conn->fd << " ERROR: Connection already closed" << std::endl;
+            // Reset processing flag since connection is invalid
+            {
+                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+                conn->processing_request = false;
+            }
             return;
         }
     }
@@ -366,6 +379,7 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     {
         std::lock_guard<std::mutex> conn_lock(conn->mutex_);
         conn->buffer.clear();
+        conn->processing_request = false;
         conn->last_activity = std::chrono::steady_clock::now();
     }
 }
@@ -570,4 +584,95 @@ HttpResponse Server::handle_api_request(const HttpRequest& request) {
     }
     
     return HttpResponse::create_error_response(HttpStatus::NOT_FOUND, "API endpoint not found");
+}
+
+bool Server::is_http_request_complete(const std::string& buffer) {
+    // Find the end of headers
+    size_t header_end = buffer.find("\r\n\r\n");
+    if (header_end == std::string::npos) {
+        return false;  // Headers not complete
+    }
+    
+    // Parse headers to extract Content-Length
+    std::string headers = buffer.substr(0, header_end);
+    std::istringstream header_stream(headers);
+    std::string line;
+    size_t content_length = 0;
+    bool has_content_length = false;
+    
+    // Skip first line (request line)
+    std::getline(header_stream, line);
+    
+    // Parse headers
+    while (std::getline(header_stream, line) && !line.empty()) {
+        // Remove carriage return if present
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        
+        size_t colon_pos = line.find(':');
+        if (colon_pos != std::string::npos) {
+            std::string name = line.substr(0, colon_pos);
+            std::string value = line.substr(colon_pos + 1);
+            
+            // Trim whitespace
+            name.erase(name.find_last_not_of(" \t") + 1);
+            value.erase(0, value.find_first_not_of(" \t"));
+            value.erase(value.find_last_not_of(" \t") + 1);
+            
+            // Convert to lowercase for comparison
+            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            
+            if (name == "content-length") {
+                try {
+                    content_length = std::stoull(value);
+                    has_content_length = true;
+                } catch (const std::exception&) {
+                    // Invalid content-length, treat as no body
+                    content_length = 0;
+                }
+                break;
+            }
+        }
+    }
+    
+    // Calculate expected total size
+    size_t expected_size = header_end + 4; // +4 for "\r\n\r\n"
+    if (has_content_length) {
+        expected_size += content_length;
+    }
+    
+    // Check if we have all data
+    return buffer.size() >= expected_size;
+}
+
+bool Server::is_likely_http_request(const std::string& buffer) {
+    if (buffer.empty()) return false;
+    
+    // Check for minimum HTTP request line
+    size_t first_line_end = buffer.find('\n');
+    if (first_line_end == std::string::npos && buffer.size() < 16) {
+        return false; // Too short to be a valid request line
+    }
+    
+    std::string first_line = (first_line_end != std::string::npos) 
+        ? buffer.substr(0, first_line_end) 
+        : buffer;
+    
+    // Remove carriage return if present
+    if (!first_line.empty() && first_line.back() == '\r') {
+        first_line.pop_back();
+    }
+    
+    // Quick check for HTTP method at the start
+    static const std::vector<std::string> methods = {"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"};
+    for (const auto& method : methods) {
+        if (first_line.compare(0, method.length(), method) == 0 && 
+            first_line.size() > method.length() && 
+            first_line[method.length()] == ' ') {
+            return true;
+        }
+    }
+    
+    return false;
 }
