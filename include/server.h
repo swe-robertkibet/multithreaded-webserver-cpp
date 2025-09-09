@@ -20,6 +20,7 @@ struct Connection {
     std::string buffer;
     bool keep_alive;
     std::chrono::steady_clock::time_point last_activity;
+    mutable std::mutex mutex_;  // Protect connection state from concurrent access
     
     Connection(int socket_fd) : fd(socket_fd), keep_alive(false), 
                                last_activity(std::chrono::steady_clock::now()) {}

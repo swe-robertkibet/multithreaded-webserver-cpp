@@ -4,6 +4,7 @@
 #include "file_handler.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -42,6 +43,16 @@ bool Server::start() {
         std::cerr << "Failed to set socket options: " << strerror(errno) << std::endl;
         close(server_fd_);
         return false;
+    }
+    
+    // Enable SO_REUSEPORT for better load balancing
+    if (setsockopt(server_fd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) == -1) {
+        std::cerr << "Warning: Could not set SO_REUSEPORT: " << strerror(errno) << std::endl;
+    }
+    
+    // Set TCP_NODELAY to reduce latency
+    if (setsockopt(server_fd_, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt)) == -1) {
+        std::cerr << "Warning: Could not set TCP_NODELAY: " << strerror(errno) << std::endl;
     }
     
     sockaddr_in address{};
@@ -84,24 +95,28 @@ void Server::stop() {
     if (running_.load()) {
         running_.store(false);
         
+        // First shutdown thread pool to prevent new tasks
+        if (thread_pool_) {
+            thread_pool_->shutdown();
+        }
+        
+        // Then join event thread
         if (event_thread_ && event_thread_->joinable()) {
             event_thread_->join();
         }
         
+        // Finally clean up connections (all threads are stopped)
         {
             std::lock_guard<std::mutex> lock(connections_mutex_);
             for (auto& [fd, conn] : connections_) {
+                epoll_->remove_fd(fd);  // Remove from epoll first
                 close(fd);
             }
             connections_.clear();
         }
         
-        if (thread_pool_) {
-            thread_pool_->shutdown();
-        }
-        
         if (server_fd_ != -1) {
-            
+            epoll_->remove_fd(server_fd_);  // Remove server socket from epoll
             close(server_fd_);
             server_fd_ = -1;
         }
@@ -158,6 +173,18 @@ void Server::handle_accept() {
             continue;
         }
         
+        // Set client socket options for better performance
+        int opt = 1;
+        if (setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt)) == -1) {
+            std::cerr << "Warning: Could not set TCP_NODELAY on client socket: " << strerror(errno) << std::endl;
+        }
+        
+        // Set socket receive timeout to prevent hanging connections
+        struct timeval timeout = {30, 0}; // 30 seconds
+        if (setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1) {
+            std::cerr << "Warning: Could not set SO_RCVTIMEO: " << strerror(errno) << std::endl;
+        }
+        
         if (!epoll_->add_fd(client_fd, EPOLLIN | EPOLLHUP | EPOLLERR)) {
             close(client_fd);
             continue;
@@ -183,32 +210,55 @@ void Server::handle_client_data(int client_fd) {
     }
     
     char buffer[BUFFER_SIZE];
-    ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE, 0);
+    ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);  // Leave space for null terminator
     
     if (bytes_received <= 0) {
         close_connection(client_fd);
         return;
     }
     
-    conn->buffer.append(buffer, bytes_received);
-    conn->last_activity = std::chrono::steady_clock::now();
-    
-    if (conn->buffer.find("\r\n\r\n") != std::string::npos) {
-        thread_pool_->enqueue(&Server::handle_client_request, this, conn);
+    // Append received bytes to connection buffer (thread-safe)
+    if (bytes_received > 0 && bytes_received <= BUFFER_SIZE - 1) {
+        bool should_process = false;
+        {
+            std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+            conn->buffer.append(buffer, bytes_received);  // Append exact bytes received
+            conn->last_activity = std::chrono::steady_clock::now();
+            
+            // Check if we have a complete HTTP request
+            should_process = (conn->buffer.find("\r\n\r\n") != std::string::npos);
+        }
+        
+        if (should_process) {
+            thread_pool_->enqueue(&Server::handle_client_request, this, conn);
+        }
+    } else {
+        std::cerr << "Invalid bytes_received: " << bytes_received << std::endl;
+        close_connection(client_fd);
+        return;
     }
 }
 
 void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     if (!conn) return;
     
-    HttpRequest request = HttpRequest::parse(conn->buffer);
+    // Parse request with thread-safe buffer access
+    HttpRequest request;
+    {
+        std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+        request = HttpRequest::parse(conn->buffer);
+    }
+    
     HttpResponse response;
     
     if (!request.is_valid()) {
         response = HttpResponse::create_error_response(HttpStatus::BAD_REQUEST, "Invalid HTTP request");
     } else {
-        // Determine keep-alive based on request
-        conn->keep_alive = request.is_keep_alive();
+        // Determine keep-alive based on request (thread-safe access)
+        {
+            std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+            conn->keep_alive = request.is_keep_alive();
+        }
         
         if (request.get_method() == HttpMethod::GET || request.get_method() == HttpMethod::HEAD) {
             std::string path = request.get_path();
@@ -231,27 +281,100 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     // Set connection header based on keep-alive decision
     response.set_keep_alive(conn->keep_alive);
     
+    // Check if connection is still valid before sending
+    {
+        std::lock_guard<std::mutex> lock(connections_mutex_);
+        if (connections_.find(conn->fd) == connections_.end()) {
+            // Connection already closed
+            return;
+        }
+    }
+    
     std::string response_str = response.to_string();
-    ssize_t sent = send(conn->fd, response_str.c_str(), response_str.length(), 0);
-    if (sent == -1) {
-        std::cerr << "Failed to send response: " << strerror(errno) << std::endl;
+    
+    // Properly handle partial sends and socket errors
+    size_t total_sent = 0;
+    size_t total_length = response_str.length();
+    
+    while (total_sent < total_length) {
+        // Check if connection still exists before each send attempt
+        {
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            if (connections_.find(conn->fd) == connections_.end()) {
+                // Connection was closed during sending
+                return;
+            }
+        }
+        
+        ssize_t sent = send(conn->fd, response_str.c_str() + total_sent, 
+                           total_length - total_sent, MSG_NOSIGNAL);
+        
+        if (sent == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // Socket would block, try again later - for now, close connection
+                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+                conn->keep_alive = false;
+                break;
+            } else if (errno == EPIPE || errno == ECONNRESET) {
+                // Connection closed by peer
+                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+                conn->keep_alive = false;
+                break;
+            } else {
+                std::cerr << "Failed to send response: " << strerror(errno) << std::endl;
+                std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+                conn->keep_alive = false;
+                break;
+            }
+        } else if (sent == 0) {
+            // Connection closed
+            std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+            conn->keep_alive = false;
+            break;
+        } else {
+            total_sent += sent;
+        }
+    }
+    
+    // Only consider successful if all data was sent
+    if (total_sent != total_length) {
+        std::lock_guard<std::mutex> conn_lock(conn->mutex_);
         conn->keep_alive = false;
     }
     
-    if (!conn->keep_alive) {
+    bool keep_connection_alive;
+    {
+        std::lock_guard<std::mutex> conn_lock(conn->mutex_);
+        keep_connection_alive = conn->keep_alive;
+    }
+    
+    if (!keep_connection_alive) {
         close_connection(conn->fd);
     } else {
+        // Clear buffer and update activity timestamp (thread-safe)
+        std::lock_guard<std::mutex> conn_lock(conn->mutex_);
         conn->buffer.clear();
         conn->last_activity = std::chrono::steady_clock::now();
     }
 }
 
 void Server::close_connection(int client_fd) {
+    std::lock_guard<std::mutex> lock(connections_mutex_);
+    
+    // Check if connection still exists (avoid double-close)
+    auto it = connections_.find(client_fd);
+    if (it == connections_.end()) {
+        return; // Already closed
+    }
+    
+    // Remove from epoll first, ignore errors (fd might already be closed)
     epoll_->remove_fd(client_fd);
+    
+    // Close the socket
     close(client_fd);
     
-    std::lock_guard<std::mutex> lock(connections_mutex_);
-    connections_.erase(client_fd);
+    // Remove from connections map
+    connections_.erase(it);
 }
 
 void Server::cleanup_inactive_connections() {

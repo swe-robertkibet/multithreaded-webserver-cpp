@@ -47,6 +47,11 @@ std::optional<CacheEntry> LRUCache::get(const std::string& key) {
 }
 
 void LRUCache::put(const std::string& key, const std::vector<char>& data, const std::string& content_type) {
+    // Input validation
+    if (key.empty() || data.empty()) {
+        return; // Don't cache empty keys or data
+    }
+    
     std::lock_guard<std::mutex> lock(mutex_);
     
     // Check if key already exists
@@ -114,31 +119,41 @@ void LRUCache::clear() {
 }
 
 void LRUCache::evict_lru() {
+    // This method is called from put() which already holds the mutex
     if (lru_list_.empty()) {
         return;
     }
     
     // Remove least recently used (back of list)
-    const std::string& lru_key = lru_list_.back();
+    const std::string lru_key = lru_list_.back();  // Copy the key to avoid reference issues
+    lru_list_.pop_back();  // Remove from list first
+    
     auto it = cache_.find(lru_key);
     if (it != cache_.end()) {
         current_size_ -= it->second.first.data.size();
         cache_.erase(it);
     }
-    lru_list_.pop_back();
 }
 
 void LRUCache::evict_expired() {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    auto it = cache_.begin();
-    while (it != cache_.end()) {
-        if (is_expired(it->second.first)) {
+    std::vector<std::string> expired_keys;
+    
+    // First pass: identify expired entries
+    for (const auto& [key, value] : cache_) {
+        if (is_expired(value.first)) {
+            expired_keys.push_back(key);
+        }
+    }
+    
+    // Second pass: safely remove expired entries
+    for (const std::string& key : expired_keys) {
+        auto it = cache_.find(key);
+        if (it != cache_.end()) {
             current_size_ -= it->second.first.data.size();
             lru_list_.erase(it->second.second);
-            it = cache_.erase(it);
-        } else {
-            ++it;
+            cache_.erase(it);
         }
     }
 }

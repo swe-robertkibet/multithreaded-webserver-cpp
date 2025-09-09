@@ -59,7 +59,10 @@ bool EpollWrapper::modify_fd(int fd, uint32_t events, void* data) {
 
 bool EpollWrapper::remove_fd(int fd) {
     if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr) == -1) {
-        std::cerr << "Failed to remove fd " << fd << " from epoll: " << strerror(errno) << std::endl;
+        if (errno != EBADF && errno != ENOENT) {
+            std::cerr << "Failed to remove fd " << fd << " from epoll: " << strerror(errno) << std::endl;
+        }
+        fd_data_.erase(fd);
         return false;
     }
     
