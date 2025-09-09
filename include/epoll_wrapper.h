@@ -4,6 +4,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
+#include <mutex>
 
 class EpollWrapper {
 public:
@@ -33,6 +34,7 @@ private:
     std::vector<epoll_event> events_buffer_;
     EventHandler event_handler_;
     std::unordered_map<int, void*> fd_data_;
+    mutable std::mutex fd_data_mutex_;
     
     static constexpr int MAX_EVENTS = 1024;
 };
