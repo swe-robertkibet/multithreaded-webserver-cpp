@@ -3,7 +3,7 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp/blob/main/LICENSE)
-[![Performance](https://img.shields.io/badge/performance-41K%20req%2Fs-orange)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
+[![Performance](https://img.shields.io/badge/performance-72K%20req%2Fs-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 
 A production-ready, high-performance HTTP web server implemented in modern C++17, featuring epoll-based event handling, thread pooling, intelligent caching, and comprehensive security features.
 
