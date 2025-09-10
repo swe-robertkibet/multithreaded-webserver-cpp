@@ -1,3 +1,4 @@
+Warning: Could not open config.json, using default max_connections of 2000
 ThreadPool initialized with 16 threads
 LRU Cache initialized: 100MB max, 300s TTL
 Starting high-performance HTTP server on port 8080...
