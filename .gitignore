@@ -3,3 +3,6 @@ build
 # Benchmark and test results
 results/
 *.gnuplot
+
+
+architecture_diagrams_mermaid_chart

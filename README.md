@@ -24,25 +24,89 @@ The multithreaded web server employs a sophisticated, layered architecture desig
 
 This comprehensive diagram shows the complete request processing pipeline from client connection through response delivery, including all major components and their interactions.
 
-![Main Architecture Diagram](images/Main%20Architecture%20Diagram.png)
+![Main Architecture](images/Main%20Architecture.png)
 
-*Complete system architecture showing the epoll-based event loop, thread pool management, request processing pipeline, caching system, rate limiting, and logging infrastructure.*
+```mermaid
+flowchart TD
+    subgraph "HTTP Clients"
+        C1["Multiple Concurrent Clients"]
+    end
+    
+    subgraph "C++ Web Server Process"
+        subgraph "Network Layer"
+            EPOLL["Epoll Event Loop<br/>Non-blocking I/O"]
+            CONN_MGR["Connection Manager<br/>Keep-alive Support"]
+        end
+        
+        subgraph "Threading Layer"
+            THREAD_POOL["Thread Pool Manager<br/>Auto-scaling"]
+            W1["Worker Thread 1"]
+            W2["Worker Thread 2"]
+            WN["Worker Thread N"]
+        end
+        
+        subgraph "Application Layer"
+            HTTP_PARSER["HTTP Request Parser<br/>Protocol Handling"]
+            HTTP_BUILDER["HTTP Response Builder<br/>Content Assembly"]
+            FILE_HANDLER["File Handler<br/>Static Content"]
+        end
+        
+        subgraph "Storage & Caching"
+            LRU_CACHE["LRU Cache<br/>Memory Efficient<br/>TTL-based"]
+        end
+    end
+    
+    subgraph "File System"
+        STATIC_FILES["Static Content<br/>Public Directory"]
+        CONFIG_FILE["config.json<br/>Server Settings"]
+    end
+    
+    C1 --> EPOLL
+    EPOLL --> CONN_MGR
+    CONN_MGR --> THREAD_POOL
+    THREAD_POOL --> W1
+    THREAD_POOL --> W2
+    THREAD_POOL --> WN
+    W1 --> HTTP_PARSER
+    W2 --> HTTP_PARSER
+    WN --> HTTP_PARSER
+    HTTP_PARSER --> FILE_HANDLER
+    FILE_HANDLER --> LRU_CACHE
+    FILE_HANDLER --> STATIC_FILES
+    HTTP_PARSER --> HTTP_BUILDER
+    HTTP_BUILDER --> CONN_MGR
+    CONFIG_FILE --> CONN_MGR
+    
+    classDef clientClass fill:#e3f2fd
+    classDef networkClass fill:#e0f2f1
+    classDef threadClass fill:#f3e5f5
+    classDef appClass fill:#e8f5e8
+    classDef storageClass fill:#fff3e0
+    
+    class C1 clientClass
+    class EPOLL,CONN_MGR networkClass
+    class THREAD_POOL,W1,W2,WN threadClass
+    class HTTP_PARSER,HTTP_BUILDER,FILE_HANDLER appClass
+    class LRU_CACHE,STATIC_FILES,CONFIG_FILE storageClass
+```
+
+*Complete system architecture showing the epoll-based event loop, thread pool management, request processing pipeline, embedded caching system, and configuration loading mechanism.*
 
 ### Component Layer Architecture  
 
 The system is organized into distinct layers, each with specific responsibilities and clear interfaces between components.
 
-![Detailed Component Interaction Diagram](images/Detailed%20Component%20Interaction%20Diagram.png)
+![Architecture Components](images/Architecture%20Components.png)
 
-*Layer-based architecture view demonstrating the separation of concerns across Client Layer, Network Layer, Threading Layer, Application Layer, and Data Layer with optimized component interactions.*
+*Layer-based architecture view demonstrating the separation of concerns across Client Layer, Network Layer, Threading Layer, Application Layer, and Data Layer with actual component interactions.*
 
 ### Request Processing Flow
 
 This detailed flowchart illustrates the complete request lifecycle with decision points, performance timings, and error handling paths.
 
-![Performance Flow Diagram](images/Performance%20Flow%20Diagram.png)
+![Architecture Flow](images/Architecture%20Flow.png)
 
-*Detailed request processing flow showing performance characteristics: ~0.1ms cache hits, ~0.5ms parsing, ~5-20ms file system operations, with comprehensive error handling and connection management.*
+*Actual request processing flow showing performance characteristics: ~0.1ms cache hits, ~0.5ms parsing, ~5-20ms file system operations, with real error handling and connection management implementation.*
 
 ### Core Components
 
