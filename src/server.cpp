@@ -16,9 +16,46 @@
 #include <errno.h>
 #include <algorithm>
 #include <vector>
+#include <fstream>
+#include <regex>
+
+// Simple function to load max_connections from config.json
+size_t load_max_connections_from_config() {
+    std::ifstream config_file("config.json");
+    if (!config_file.is_open()) {
+        std::cerr << "Warning: Could not open config.json, using default max_connections of 2000" << std::endl;
+        return 2000;
+    }
+    
+    std::string line;
+    std::regex max_conn_regex(R"("max_connections"\s*:\s*(\d+))");
+    std::smatch match;
+    
+    while (std::getline(config_file, line)) {
+        if (std::regex_search(line, match, max_conn_regex)) {
+            try {
+                size_t max_connections = std::stoul(match[1].str());
+                if (max_connections > 0 && max_connections <= 100000) {
+                    std::cout << "Loaded max_connections from config.json: " << max_connections << std::endl;
+                    return max_connections;
+                } else {
+                    std::cerr << "Warning: Invalid max_connections value in config.json, using default of 2000" << std::endl;
+                    return 2000;
+                }
+            } catch (const std::exception&) {
+                std::cerr << "Warning: Could not parse max_connections from config.json, using default of 2000" << std::endl;
+                return 2000;
+            }
+        }
+    }
+    
+    std::cerr << "Warning: max_connections not found in config.json, using default of 2000" << std::endl;
+    return 2000;
+}
 
 Server::Server(int port, const std::string& host, size_t thread_count)
-    : server_fd_(-1), port_(port), host_(host), running_(false) {
+    : server_fd_(-1), port_(port), host_(host), running_(false), 
+      max_connections_(load_max_connections_from_config()) {
     
     epoll_ = std::make_unique<EpollWrapper>();
     thread_pool_ = std::make_unique<ThreadPool>(thread_count);
@@ -186,8 +223,8 @@ void Server::handle_accept() {
         // Check connection limit to prevent resource exhaustion
         {
             std::lock_guard<std::mutex> lock(connections_mutex_);
-            if (connections_.size() >= MAX_CONNECTIONS) {
-                std::cerr << "[Accept] ERROR: Connection limit reached (" << connections_.size() << "/" << MAX_CONNECTIONS << "), rejecting fd=" << client_fd << std::endl;
+            if (connections_.size() >= max_connections_) {
+                std::cerr << "[Accept] ERROR: Connection limit reached (" << connections_.size() << "/" << max_connections_ << "), rejecting fd=" << client_fd << std::endl;
                 close(client_fd);
                 continue;
             }
@@ -220,7 +257,7 @@ void Server::handle_accept() {
         {
             std::lock_guard<std::mutex> lock(connections_mutex_);
             connections_[client_fd] = connection;
-            // std::cerr << "[Accept] SUCCESS: fd=" << client_fd << " (total connections: " << connections_.size() << "/" << MAX_CONNECTIONS << ")" << std::endl;
+            // std::cerr << "[Accept] SUCCESS: fd=" << client_fd << " (total connections: " << connections_.size() << "/" << max_connections_ << ")" << std::endl;
         }
     }
 }
