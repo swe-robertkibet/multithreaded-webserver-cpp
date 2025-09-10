@@ -374,7 +374,6 @@ void Server::handle_client_request(std::shared_ptr<Connection> conn) {
     {
         std::lock_guard<std::mutex> lock(connections_mutex_);
         if (connections_.find(conn->fd) == connections_.end()) {
-            std::cerr << "[Response] fd=" << conn->fd << " ERROR: Connection already closed" << std::endl;
             {
                 std::lock_guard<std::mutex> conn_lock(conn->mutex_);
                 conn->processing_request = false;
@@ -441,7 +440,6 @@ void Server::send_response_async(std::shared_ptr<Connection> conn) {
             close_connection(conn->fd);
             return;
         } else {
-            std::cerr << "[Send] fd=" << conn->fd << " ERROR: Failed to send response: " << strerror(errno) << std::endl;
             conn->keep_alive = false;
             conn->has_pending_write = false;
             conn_lock.unlock();
@@ -508,7 +506,7 @@ void Server::close_connection(int client_fd) {
     }
     
     if (has_pending_write) {
-        std::cerr << "[CloseConn] fd=" << client_fd << " WARNING: Closing connection with pending write!" << std::endl;
+        // Connection closed with pending write - silent handling
     }
     
     connections_.erase(it);
@@ -593,6 +591,7 @@ bool Server::is_http_request_complete(const std::string& buffer) {
     size_t header_end = buffer.find("\r\n\r\n");
     if (header_end == std::string::npos) {
         return false;
+    }
     
     std::string headers = buffer.substr(0, header_end);
     std::istringstream header_stream(headers);
