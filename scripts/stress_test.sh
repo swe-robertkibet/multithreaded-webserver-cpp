@@ -242,12 +242,6 @@ EOF
     fi
     
     echo "" >> stress_test_report.md
-    echo "## Recommendations" >> stress_test_report.md
-    echo "" >> stress_test_report.md
-    echo "Based on the stress test results:" >> stress_test_report.md
-    echo "- Monitor the identified performance thresholds in production" >> stress_test_report.md
-    echo "- Consider implementing rate limiting if not already enabled" >> stress_test_report.md
-    echo "- Review memory usage patterns for optimization opportunities" >> stress_test_report.md
     
     print_success "Stress test report generated: stress_test_report.md"
 }
