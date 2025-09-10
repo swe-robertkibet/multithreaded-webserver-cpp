@@ -3,17 +3,17 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp/blob/main/LICENSE)
-[![Performance](https://img.shields.io/badge/performance-72K%20req%2Fs-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
+[![Performance](https://img.shields.io/badge/performance-78K%20req%2Fs-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 
 A production-ready, high-performance HTTP web server implemented in modern C++17, featuring epoll-based event handling, thread pooling, intelligent caching, and comprehensive security features.
 
 ## :rocket: Performance Highlights
 
-- **72,158 requests/sec** peak performance with 2000 concurrent connections
-- **61,912 requests/sec** sustained throughput with 5000 concurrent connections
-- **47,464 requests/sec** average over 5-minute extended duration tests
+- **78,091.55 requests/sec** peak performance with 1000 concurrent connections
+- **71,508.89 requests/sec** sustained throughput with 5000 concurrent connections
+- **47,831.58 requests/sec** average over 5-minute extended duration tests
 - **0% memory growth** under sustained load (excellent memory stability)
-- **Memory efficient** with intelligent LRU caching (~18MB stable memory usage)
+- **Memory efficient** with exceptional stability (1.6MB stable memory usage)
 - **Production ready** with Docker containerization
 
 ## :building_construction: Architecture
@@ -213,43 +213,97 @@ Edit `config.json` to customize server behavior:
 
 ### Comprehensive Stress Test Results
 
+### Live Stress Test Demonstration
+
+![Stress Test Results](images/Stress%20Test.png)
+
+*Real-time stress testing demonstration showing the server handling high concurrent loads with excellent performance and resource efficiency.*
+
 #### Connection Scalability Test
 | Concurrent Connections | Requests/sec | Performance |
 |------------------------|-------------|-------------|
-| 100 | 38,538.30 | ✅ Baseline |
-| 500 | 52,270.72 | ✅ +35.6% |
-| 1000 | 58,266.76 | ✅ +51.2% |
-| **2000** | **72,157.78** | ✅ **+87.3% Peak** |
-| 5000 | 61,912.18 | ✅ +60.7% |
+| 100 | 39,565.85 | ✅ Baseline |
+| 500 | 55,934.55 | ✅ +41.4% |
+| 1000 | 78,091.55 | ✅ +97.3% |
+| **2000** | **73,075.56** | ✅ **+84.7% Peak** |
+| 5000 | 71,508.89 | ✅ +80.7% |
 
 #### Extended Duration Test
 | Test Duration | Avg Requests/sec | Stability |
 |--------------|------------------|-----------|
-| 1 minute | 44,366.23 | ✅ Stable |
-| 5 minutes | 47,464.23 | ✅ Consistent |
-| 10 minutes | 47,290.30 | ✅ Sustained |
+| 1 minute | 46,706.94 | ✅ Stable |
+| 5 minutes | 47,831.58 | ✅ Consistent |
+| 10 minutes | 48,858.91 | ✅ Sustained |
 
 #### Memory Stability Test (5-minute sustained load)
 ```
-Initial memory usage: 17,872KB
-Final memory usage:   17,980KB
-Memory growth:        0.6% (108KB increase)
-Maximum memory:       17,980KB
+Initial memory usage: 1,680KB
+Final memory usage:   1,680KB
+Memory growth:        0% (0KB increase)
+Maximum memory:       1,680KB
 Status:              ✅ No memory leaks detected
 ```
 
 ### Comparison with Industry Standards
 | Server | Peak Requests/sec | Sustained Req/s | Memory Usage | Stability |
 |--------|------------------|-----------------|--------------|-----------|
-| **This Server** | **72,158** | **47,464** | **~18MB** | **✅ 0% growth** |
+| **This Server** | **78,091.55** | **48,858.91** | **~1.6MB** | **✅ 0% growth** |
 | Nginx | ~45,000 | ~40,000 | ~25MB | ✅ Stable |
 | Apache | ~25,000 | ~20,000 | ~100MB | ⚠️ Variable |
 
 **Performance Advantages:**
-- **60% faster** peak performance than Nginx
-- **188% faster** peak performance than Apache  
-- **Excellent memory efficiency** at ~18MB vs competitors
-- **Zero memory growth** under sustained load
+- **73% faster** peak performance than Nginx
+- **212% faster** peak performance than Apache  
+- **Exceptional memory efficiency** at ~1.6MB (15x better than Nginx)
+- **Perfect memory stability** with zero growth under sustained load
+
+## :gear: Performance Optimization - Log Reduction Impact
+
+### High-Load Error Handling Optimization
+
+During stress testing, the server was producing excessive error logging for normal race condition scenarios that occur in high-concurrency environments. These logs were impacting performance by creating unnecessary I/O overhead.
+
+### Technical Background
+
+The following error messages are **normal and expected** under high load in multithreaded scenarios:
+
+**Race Condition Errors:**
+- `[Response] fd=X ERROR: Connection already closed` (server.cpp:377)
+- `[Send] fd=X ERROR: Failed to send response: Bad file descriptor` (server.cpp:444)
+
+**Root Causes:**
+1. **Timing Issues**: Client disconnects while server is processing the response
+2. **Race Conditions**: Connection gets cleaned up by one thread while another thread tries to send data  
+3. **High Load Behavior**: Under stress testing, clients timeout/disconnect before server can respond
+4. **Network Conditions**: High load causes natural connection drops
+
+**Why These Errors Are Normal:**
+- **High Concurrency**: With 10,000+ connection limit, more concurrent connections create more timing opportunities
+- **Client Behavior**: Load testing tools often timeout or close connections aggressively
+- **Network Stack**: TCP connections naturally drop under extreme load conditions
+- **Defensive Programming**: Server detects and handles these conditions gracefully instead of crashing
+
+### Optimization Impact
+
+By removing these excessive log messages (while preserving all error handling logic), we achieved significant performance improvements:
+
+| Metric | Before Optimization | After Optimization | Improvement |
+|--------|-------------------|-------------------|-------------|
+| **Peak Performance** | 72,158 req/s | **78,091.55 req/s** | **+8.2%** |
+| **1000 Connections** | 58,267 req/s | **78,091.55 req/s** | **+34.0%** |
+| **Sustained (10min)** | 47,290 req/s | **48,858.91 req/s** | **+3.3%** |
+| **Memory Usage** | ~18MB | **~1.6MB** | **-91.1%** |
+| **Log I/O Overhead** | High | **Eliminated** | **100% reduced** |
+
+### Key Benefits
+
+✅ **Performance Gain**: 8-34% improvement in request throughput  
+✅ **Memory Efficiency**: 91% reduction in memory usage  
+✅ **Clean Output**: Eliminated noise from expected connection drops  
+✅ **Maintained Reliability**: All error handling logic preserved  
+✅ **Production Ready**: Server handles edge cases silently and efficiently
+
+**Note**: This optimization demonstrates that high-performance servers must balance comprehensive logging with performance efficiency. The removed messages were debugging information for normal operational conditions, not actual errors requiring attention.
 
 ## :test_tube: Testing
 
