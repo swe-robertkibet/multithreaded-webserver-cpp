@@ -20,7 +20,7 @@ print_header() {
 }
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}[OK] $1${NC}"
 }
 
 wait_for_server() {
@@ -32,7 +32,7 @@ wait_for_server() {
         sleep 1
         count=$((count + 1))
         if [ $count -ge $timeout ]; then
-            echo "❌ Timeout waiting for server"
+            echo "[ERROR] Timeout waiting for server"
             return 1
         fi
     done
@@ -74,7 +74,7 @@ main() {
     
     # Check if wrk is available
     if ! command -v wrk &> /dev/null; then
-        echo "❌ wrk is not installed. Please install it first:"
+        echo "[ERROR] wrk is not installed. Please install it first:"
         echo "Ubuntu/Debian: sudo apt-get install wrk"
         echo "macOS: brew install wrk"
         exit 1
