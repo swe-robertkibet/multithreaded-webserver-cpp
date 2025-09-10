@@ -36,7 +36,6 @@ void Logger::init(const std::string& access_log_path, const std::string& error_l
             console_output_ = true;
         }
         
-        // Write startup message
         log_info("Logger initialized - Access: " + access_log_path + ", Error: " + error_log_path);
         
     } catch (const std::exception& e) {
@@ -57,7 +56,6 @@ void Logger::log_access(const std::string& client_ip,
     
     std::ostringstream log_entry;
     
-    // Common Log Format (CLF) with extensions
     log_entry << client_ip << " - - [" << get_timestamp() << "] "
               << "\"" << method << " " << path << " HTTP/1.1\" "
               << status_code << " " << response_size;

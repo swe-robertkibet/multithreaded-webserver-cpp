@@ -17,7 +17,6 @@ HttpRequest HttpRequest::parse(const std::string& raw_request) {
     std::string body;
     
     while (std::getline(stream, line)) {
-        // Remove carriage return if present
         if (!line.empty() && line.back() == '\r') {
             line.pop_back();
         }
@@ -57,7 +56,7 @@ void HttpRequest::parse_request_line(const std::string& line) {
     method_ = string_to_method(method_str);
     version_ = version;
     
-    // Split path and query string
+    //Spllit path and query string
     size_t query_pos = path_with_query.find('?');
     if (query_pos != std::string::npos) {
         path_ = path_with_query.substr(0, query_pos);
@@ -79,12 +78,12 @@ void HttpRequest::parse_header_line(const std::string& line) {
     std::string name = line.substr(0, colon_pos);
     std::string value = line.substr(colon_pos + 1);
     
-    // Trim whitespace
+    //Trim whitespace
     name.erase(name.find_last_not_of(" \t") + 1);
     value.erase(0, value.find_first_not_of(" \t"));
     value.erase(value.find_last_not_of(" \t") + 1);
     
-    // Convert header name to lowercase for case-insensitive lookup
+    //Convert header name to lowercase for case-insensitive lookup
     std::transform(name.begin(), name.end(), name.begin(), ::tolower);
     
     headers_[name] = value;
@@ -188,40 +187,33 @@ HttpMethod HttpRequest::string_to_method(const std::string& method_str) {
 }
 
 bool HttpRequest::is_request_valid() const {
-    // Basic requirements
     if (method_ == HttpMethod::UNKNOWN) {
         return false;
     }
     
-    // Path must exist and start with /
     if (path_.empty() || path_[0] != '/') {
         return false;
     }
     
-    // Version must be HTTP/1.0 or HTTP/1.1
     if (version_ != "HTTP/1.0" && version_ != "HTTP/1.1") {
         return false;
     }
     
-    // Path validation - reject paths with dangerous characters
     for (char c : path_) {
-        if (c < 0x20 || c == 0x7F) { // Control characters
+        if (c < 0x20 || c == 0x7F) {
             return false;
         }
     }
     
-    // For methods that require a body, validate Content-Length if present
     if (method_ == HttpMethod::POST || method_ == HttpMethod::PUT) {
         auto content_length_header = get_header("content-length");
         if (!content_length_header.empty()) {
             try {
                 size_t content_length = std::stoull(content_length_header);
                 if (body_.size() != content_length) {
-                    // Body size mismatch (might be incomplete request)
                     return body_.size() >= content_length;
                 }
             } catch (const std::exception&) {
-                // Invalid Content-Length header
                 return false;
             }
         }

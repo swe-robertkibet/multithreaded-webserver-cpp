@@ -24,7 +24,7 @@ std::optional<CacheEntry> LRUCache::get(const std::string& key) {
     
     auto& [entry, list_it] = it->second;
     
-    // Check if entry is expired
+    //check if entry is expired
     if (is_expired(entry)) {
         lru_list_.erase(list_it);
         current_size_ -= entry.data.size();
@@ -33,12 +33,12 @@ std::optional<CacheEntry> LRUCache::get(const std::string& key) {
         return std::nullopt;
     }
     
-    // Move to front (most recently used)
+    //move to front - most recently used 
     lru_list_.erase(list_it);
     lru_list_.push_front(key);
     it->second.second = lru_list_.begin();
     
-    // Update access statistics
+    //update access statistics
     entry.last_accessed = std::chrono::steady_clock::now();
     entry.access_count++;
     
@@ -47,17 +47,15 @@ std::optional<CacheEntry> LRUCache::get(const std::string& key) {
 }
 
 void LRUCache::put(const std::string& key, const std::vector<char>& data, const std::string& content_type) {
-    // Input validation
+    //inpput validation
     if (key.empty() || data.empty()) {
-        return; // Don't cache empty keys or data
+        return;
     }
     
     std::lock_guard<std::mutex> lock(mutex_);
     
-    // Check if key already exists
     auto it = cache_.find(key);
     if (it != cache_.end()) {
-        // Update existing entry
         auto& [entry, list_it] = it->second;
         current_size_ -= entry.data.size();
         current_size_ += data.size();
@@ -68,7 +66,6 @@ void LRUCache::put(const std::string& key, const std::vector<char>& data, const 
         entry.last_accessed = entry.created;
         entry.access_count = 1;
         
-        // Move to front
         lru_list_.erase(list_it);
         lru_list_.push_front(key);
         it->second.second = lru_list_.begin();
@@ -77,19 +74,19 @@ void LRUCache::put(const std::string& key, const std::vector<char>& data, const 
     
     size_t entry_size = data.size();
     
-    // Evict entries if necessary
+    //evict entries if necessary
     while (current_size_ + entry_size > max_size_bytes_ && !cache_.empty()) {
         evict_lru();
     }
     
-    // Skip caching if single entry is too large
+    // skip caching if single entry is too large
     if (entry_size > max_size_bytes_) {
         std::cerr << "Warning: File too large to cache: " << entry_size 
                   << " bytes > " << max_size_bytes_ << " bytes" << std::endl;
         return;
     }
     
-    // Add new entry
+    //add new entry
     lru_list_.push_front(key);
     CacheEntry entry(data, content_type);
     cache_[key] = std::make_pair(entry, lru_list_.begin());
@@ -119,14 +116,14 @@ void LRUCache::clear() {
 }
 
 void LRUCache::evict_lru() {
-    // This method is called from put() which already holds the mutex
+    // called from put() which already holds the mutex
     if (lru_list_.empty()) {
         return;
     }
     
-    // Remove least recently used (back of list)
-    const std::string lru_key = lru_list_.back();  // Copy the key to avoid reference issues
-    lru_list_.pop_back();  // Remove from list first
+    // remove least recently used (back of list)
+    const std::string lru_key = lru_list_.back();
+    lru_list_.pop_back();
     
     auto it = cache_.find(lru_key);
     if (it != cache_.end()) {
@@ -140,14 +137,14 @@ void LRUCache::evict_expired() {
     
     std::vector<std::string> expired_keys;
     
-    // First pass: identify expired entries
+    // first pass where we identify expired entries
     for (const auto& [key, value] : cache_) {
         if (is_expired(value.first)) {
             expired_keys.push_back(key);
         }
     }
     
-    // Second pass: safely remove expired entries
+    //second pass where we safely remove expired entries
     for (const std::string& key : expired_keys) {
         auto it = cache_.find(key);
         if (it != cache_.end()) {
@@ -160,7 +157,7 @@ void LRUCache::evict_expired() {
 
 bool LRUCache::is_expired(const CacheEntry& entry) const {
     if (ttl_seconds_ <= 0) {
-        return false; // No expiration
+        return false;
     }
     
     auto now = std::chrono::steady_clock::now();

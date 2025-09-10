@@ -18,7 +18,7 @@ void signal_handler(int signal) {
 
 int main(int argc, char* argv[]) {
     int port = 8080;
-    size_t thread_count = 0; // 0 means auto-detect
+    size_t thread_count = 0; // VERY IMPOOORTANNT!! 0 means auto-detect
     
     if (argc > 1) {
         try {

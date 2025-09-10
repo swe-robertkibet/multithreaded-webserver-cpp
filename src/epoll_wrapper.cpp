@@ -94,7 +94,6 @@ int EpollWrapper::wait_for_events(std::vector<Event>& events, int timeout_ms) {
     events.clear();
     events.reserve(num_events);
     
-    // Protect fd_data_ access during event processing
     std::lock_guard<std::mutex> lock(fd_data_mutex_);
     
     for (int i = 0; i < num_events; ++i) {
@@ -102,7 +101,6 @@ int EpollWrapper::wait_for_events(std::vector<Event>& events, int timeout_ms) {
         event.fd = events_buffer_[i].data.fd;
         event.events = events_buffer_[i].events;
         
-        // Safely access fd_data_ map
         auto it = fd_data_.find(event.fd);
         event.data = (it != fd_data_.end()) ? it->second : nullptr;
         

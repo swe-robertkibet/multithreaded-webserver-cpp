@@ -25,7 +25,7 @@ bool RateLimiter::is_allowed(const std::string& client_ip) {
     
     total_requests_++;
     
-    // Periodic cleanup of expired buckets
+    //cleanup of expired buckets
     auto now = std::chrono::steady_clock::now();
     auto cleanup_elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_cleanup_);
     if (cleanup_elapsed.count() >= CLEANUP_INTERVAL_SECONDS) {
@@ -35,7 +35,7 @@ bool RateLimiter::is_allowed(const std::string& client_ip) {
     
     std::string ip = extract_ip_from_address(client_ip);
     
-    // Find or create bucket for this IP
+    //find/create bucket for this IP
     auto it = buckets_.find(ip);
     if (it == buckets_.end()) {
         it = buckets_.emplace(ip, TokenBucket(burst_capacity_)).first;
@@ -57,8 +57,6 @@ void RateLimiter::refill_bucket(TokenBucket& bucket) {
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - bucket.last_refill);
     double elapsed_seconds = elapsed.count() / 1000.0;
-    
-    // Add tokens based on elapsed time and rate
     double tokens_to_add = elapsed_seconds * requests_per_second_;
     bucket.tokens = std::min(burst_capacity_, bucket.tokens + tokens_to_add);
     bucket.last_refill = now;
