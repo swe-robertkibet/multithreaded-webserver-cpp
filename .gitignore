@@ -1,1 +1,5 @@
 build
+
+# Benchmark and test results
+results/
+*.gnuplot
