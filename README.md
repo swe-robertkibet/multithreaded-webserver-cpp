@@ -3,7 +3,7 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp/blob/main/LICENSE)
-[![Performance](https://img.shields.io/badge/performance-78K%20req%2Fs-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
+[![Performance](https://img.shields.io/badge/performance-78.1K%20req%2Fs-brightgreen)](https://github.com/swe-robertkibet/multithreaded-webserver-cpp)
 
 A production-ready, high-performance HTTP web server implemented in modern C++17, featuring epoll-based event handling, thread pooling, intelligent caching, and comprehensive security features.
 
@@ -13,7 +13,7 @@ A production-ready, high-performance HTTP web server implemented in modern C++17
 - **71,508.89 requests/sec** sustained throughput with 5000 concurrent connections
 - **47,831.58 requests/sec** average over 5-minute extended duration tests
 - **0% memory growth** under sustained load (excellent memory stability)
-- **Memory efficient** with exceptional stability (1.6MB stable memory usage)
+- **Memory efficient** with exceptional stability (1.7MB stable memory usage)
 - **Production ready** with Docker containerization
 
 ## :building_construction: Architecture
@@ -55,7 +55,7 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 
 #### 2. **Thread Pool Management**
 - **Location**: `include/thread_pool.h`
-- Custom thread pool implementation with work-stealing
+- Custom thread pool implementation with task queue
 - Configurable worker thread count (auto-detects hardware threads)
 - Task queue with condition variable synchronization
 - Future-based task completion tracking
@@ -64,14 +64,13 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 - **Location**: `src/http_request.cpp`, `src/http_response.cpp`
 - Full HTTP/1.1 implementation
 - Keep-alive connection support
-- Chunked transfer encoding
 - Comprehensive header parsing and validation
 
 #### 4. **Intelligent Caching System**
 - **Location**: `src/cache.cpp`, `include/cache.h`
 - LRU (Least Recently Used) eviction policy
 - TTL-based expiration (configurable)
-- Memory-efficient storage with compression
+- Memory-efficient storage
 - Thread-safe with fine-grained locking
 
 #### 5. **Rate Limiting**
@@ -110,14 +109,12 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 ### Memory Management
 
 - **RAII Principles**: All resources managed with smart pointers
-- **Zero-Copy Operations**: Direct buffer manipulation where possible
-- **Memory Pools**: Reused connection and buffer objects
 - **Cache Management**: Automatic memory cleanup with LRU eviction
 
 ## :wrench: Features
 
 ### Core Features
-- ✅ **High Performance**: 41K+ requests/sec with low latency
+- ✅ **High Performance**: 78K+ requests/sec with low latency
 - ✅ **Multithreaded**: Configurable thread pool with auto-scaling
 - ✅ **Event-Driven**: Linux epoll for efficient I/O multiplexing
 - ✅ **HTTP/1.1**: Full protocol support with keep-alive
@@ -247,14 +244,14 @@ Status:              ✅ No memory leaks detected
 ### Comparison with Industry Standards
 | Server | Peak Requests/sec | Sustained Req/s | Memory Usage | Stability |
 |--------|------------------|-----------------|--------------|-----------|
-| **This Server** | **78,091.55** | **48,858.91** | **~1.6MB** | **✅ 0% growth** |
+| **This Server** | **78,091.55** | **48,858.91** | **1.7MB** | **✅ 0% growth** |
 | Nginx | ~45,000 | ~40,000 | ~25MB | ✅ Stable |
 | Apache | ~25,000 | ~20,000 | ~100MB | ⚠️ Variable |
 
 **Performance Advantages:**
 - **73% faster** peak performance than Nginx
 - **212% faster** peak performance than Apache  
-- **Exceptional memory efficiency** at ~1.6MB (15x better than Nginx)
+- **Exceptional memory efficiency** at 1.7MB (15x better than Nginx)
 - **Perfect memory stability** with zero growth under sustained load
 
 ## :gear: Performance Optimization - Log Reduction Impact
@@ -292,7 +289,7 @@ By removing these excessive log messages (while preserving all error handling lo
 | **Peak Performance** | 72,158 req/s | **78,091.55 req/s** | **+8.2%** |
 | **1000 Connections** | 58,267 req/s | **78,091.55 req/s** | **+34.0%** |
 | **Sustained (10min)** | 47,290 req/s | **48,858.91 req/s** | **+3.3%** |
-| **Memory Usage** | ~18MB | **~1.6MB** | **-91.1%** |
+| **Memory Usage** | ~18MB | **1.7MB** | **-91.1%** |
 | **Log I/O Overhead** | High | **Eliminated** | **100% reduced** |
 
 ### Key Benefits
