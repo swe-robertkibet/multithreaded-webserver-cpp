@@ -10,15 +10,13 @@ FileHandler::FileHandler(const std::string& document_root, const std::string& de
     : document_root_(document_root), default_file_(default_file), max_file_size_(DEFAULT_MAX_FILE_SIZE), cache_enabled_(enable_cache) {
     
     if (cache_enabled_) {
-        cache_ = std::make_unique<LRUCache>(cache_size_mb, 300); // 5 minute TTL
+        cache_ = std::make_unique<LRUCache>(cache_size_mb, 300);
     }
     
-    // Ensure document root ends with a slash
     if (!document_root_.empty() && document_root_.back() != '/') {
         document_root_ += '/';
     }
     
-    // Create document root if it doesn't exist
     try {
         std::filesystem::create_directories(document_root_);
     } catch (const std::exception& e) {
@@ -39,7 +37,6 @@ HttpResponse FileHandler::handle_file_request(const std::string& request_path) {
     
     try {
         if (std::filesystem::is_directory(resolved_path)) {
-            // Try to serve default file from directory
             std::string default_path = resolved_path;
             if (default_path.back() != '/') {
                 default_path += '/';
@@ -49,7 +46,6 @@ HttpResponse FileHandler::handle_file_request(const std::string& request_path) {
             if (std::filesystem::exists(default_path) && std::filesystem::is_regular_file(default_path)) {
                 resolved_path = default_path;
             } else {
-                // Return directory listing
                 return create_directory_listing(resolved_path, request_path);
             }
         }
@@ -58,13 +54,13 @@ HttpResponse FileHandler::handle_file_request(const std::string& request_path) {
             return HttpResponse::create_error_response(HttpStatus::FORBIDDEN, "Not a regular file");
         }
         
-        // Check file size
+        // check file size
         uintmax_t file_size = std::filesystem::file_size(resolved_path);
         if (file_size > max_file_size_) {
             return HttpResponse::create_error_response(HttpStatus::FORBIDDEN, "File too large");
         }
         
-        // Try cache first
+        //Try cache first
         if (cache_enabled_ && cache_) {
             auto cached_entry = cache_->get(resolved_path);
             if (cached_entry) {
@@ -81,7 +77,7 @@ HttpResponse FileHandler::handle_file_request(const std::string& request_path) {
             return HttpResponse::create_error_response(HttpStatus::INTERNAL_SERVER_ERROR, "Could not read file");
         }
         
-        // Cache the file if caching is enabled
+        //cache the file if caching is enabled
         std::string extension = std::filesystem::path(resolved_path).extension().string();
         std::string mime_type = HttpResponse::get_mime_type(extension);
         
@@ -102,12 +98,10 @@ HttpResponse FileHandler::handle_file_request(const std::string& request_path) {
 std::string FileHandler::resolve_path(const std::string& request_path) const {
     std::string path = request_path;
     
-    // Remove leading slash
     if (!path.empty() && path[0] == '/') {
         path = path.substr(1);
     }
     
-    // If empty, use default file
     if (path.empty()) {
         path = default_file_;
     }
@@ -120,32 +114,27 @@ bool FileHandler::is_safe_path(const std::string& resolved_path) const {
         // Get canonical root path
         std::filesystem::path canonical_root = std::filesystem::canonical(document_root_);
         
-        // For resolved_path, only get canonical if it exists, otherwise use parent
         std::filesystem::path path_to_check(resolved_path);
         std::filesystem::path canonical_path;
         
         if (std::filesystem::exists(resolved_path)) {
             canonical_path = std::filesystem::canonical(resolved_path);
         } else {
-            // For non-existent paths, check if parent exists and is safe
             auto parent_path = path_to_check.parent_path();
             if (std::filesystem::exists(parent_path)) {
                 auto canonical_parent = std::filesystem::canonical(parent_path);
                 canonical_path = canonical_parent / path_to_check.filename();
             } else {
-                // Neither file nor parent exists, check path structure only
                 std::filesystem::path abs_path = std::filesystem::absolute(resolved_path);
                 canonical_path = abs_path.lexically_normal();
             }
         }
         
-        // Check if the resolved path is within the document root
         auto relative = std::filesystem::relative(canonical_path, canonical_root);
         if (relative.empty()) {
             return false;
         }
         
-        // Check for path traversal attempts
         std::string relative_str = relative.native();
         return relative_str[0] != '.' && relative_str.find("..") == std::string::npos;
         
@@ -211,13 +200,11 @@ HttpResponse FileHandler::create_directory_listing(const std::string& dir_path, 
             body << "<tr><td><a href=\"" << parent_path << "\">..</a></td><td>-</td><td>-</td></tr>\n";
         }
         
-        // List directory contents
         std::vector<std::filesystem::directory_entry> entries;
         for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
             entries.push_back(entry);
         }
         
-        // Sort entries (directories first, then files)
         std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
             if (a.is_directory() != b.is_directory()) {
                 return a.is_directory();
@@ -270,7 +257,7 @@ HttpResponse FileHandler::create_directory_listing(const std::string& dir_path, 
         HttpResponse response(HttpStatus::OK);
         response.set_body(body.str());
         response.set_content_type("text/html; charset=utf-8");
-        response.set_header("X-Cache", "NONE"); // Directory listings are not cached
+        response.set_header("X-Cache", "NONE");
         
         return response;
         
