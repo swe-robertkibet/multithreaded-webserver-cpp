@@ -7,7 +7,7 @@
 
 A production-ready, high-performance HTTP web server implemented in modern C++17, featuring epoll-based event handling, thread pooling, intelligent caching, and comprehensive security features.
 
-## :rocket: Performance Highlights
+## Performance Highlights
 
 - **78,091.55 requests/sec** peak performance with 1000 concurrent connections
 - **71,508.89 requests/sec** sustained throughput with 5000 concurrent connections
@@ -16,7 +16,7 @@ A production-ready, high-performance HTTP web server implemented in modern C++17
 - **Memory efficient** with exceptional stability (1.7MB stable memory usage)
 - **Production ready** with Docker containerization
 
-## :building_construction: Architecture
+## Architecture
 
 The multithreaded web server employs a sophisticated, layered architecture designed for high performance, scalability, and maintainability. The following diagrams illustrate the complete system design from different perspectives.
 
@@ -26,15 +26,15 @@ This comprehensive diagram shows the complete request processing pipeline from c
 
 ![Main Architecture](images/Main%20Architecture.png)
 
-*Complete system architecture showing the epoll-based event loop, thread pool management, request processing pipeline, embedded caching system, and configuration loading mechanism.*
+_Complete system architecture showing the epoll-based event loop, thread pool management, request processing pipeline, embedded caching system, and configuration loading mechanism._
 
-### Component Layer Architecture  
+### Component Layer Architecture
 
 The system is organized into distinct layers, each with specific responsibilities and clear interfaces between components.
 
 ![Architecture Components](images/Architecture%20Components.png)
 
-*Layer-based architecture view demonstrating the separation of concerns across Client Layer, Network Layer, Threading Layer, Application Layer, and Data Layer with actual component interactions.*
+_Layer-based architecture view demonstrating the separation of concerns across Client Layer, Network Layer, Threading Layer, Application Layer, and Data Layer with actual component interactions._
 
 ### Request Processing Flow
 
@@ -42,11 +42,12 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 
 ![Architecture Flow](images/Architecture%20Flow.png)
 
-*Actual request processing flow showing performance characteristics: ~0.1ms cache hits, ~0.5ms parsing, ~5-20ms file system operations, with real error handling and connection management implementation.*
+_Actual request processing flow showing performance characteristics: ~0.1ms cache hits, ~0.5ms parsing, ~5-20ms file system operations, with real error handling and connection management implementation._
 
 ### Core Components
 
 #### 1. **Event-Driven I/O (epoll)**
+
 - **Location**: `src/epoll_wrapper.cpp`, `include/epoll_wrapper.h`
 - Linux epoll for scalable I/O multiplexing
 - Non-blocking socket operations
@@ -54,6 +55,7 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 - Handles thousands of concurrent connections efficiently
 
 #### 2. **Thread Pool Management**
+
 - **Location**: `include/thread_pool.h`
 - Custom thread pool implementation with task queue
 - Configurable worker thread count (auto-detects hardware threads)
@@ -61,12 +63,14 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 - Future-based task completion tracking
 
 #### 3. **HTTP Protocol Handler**
+
 - **Location**: `src/http_request.cpp`, `src/http_response.cpp`
 - Full HTTP/1.1 implementation
 - Keep-alive connection support
 - Comprehensive header parsing and validation
 
 #### 4. **Intelligent Caching System**
+
 - **Location**: `src/cache.cpp`, `include/cache.h`
 - LRU (Least Recently Used) eviction policy
 - TTL-based expiration (configurable)
@@ -74,6 +78,7 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 - Thread-safe with fine-grained locking
 
 #### 5. **Rate Limiting**
+
 - **Location**: `src/rate_limiter.cpp`, `include/rate_limiter.h`
 - Token bucket algorithm per client IP
 - Configurable requests per second and burst capacity
@@ -81,6 +86,7 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 - Statistics tracking for monitoring
 
 #### 6. **File Handler**
+
 - **Location**: `src/file_handler.cpp`, `include/file_handler.h`
 - Static file serving with MIME type detection
 - Directory listing support
@@ -88,6 +94,7 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 - Security features (path traversal protection)
 
 #### 7. **Structured Logging**
+
 - **Location**: `src/logger.cpp`, `include/logger.h`
 - Separate access and error logs
 - Configurable log levels (DEBUG, INFO, WARN, ERROR)
@@ -111,36 +118,40 @@ This detailed flowchart illustrates the complete request lifecycle with decision
 - **RAII Principles**: All resources managed with smart pointers
 - **Cache Management**: Automatic memory cleanup with LRU eviction
 
-## :wrench: Features
+## Features
 
 ### Core Features
-- ✅ **High Performance**: 78K+ requests/sec with low latency
-- ✅ **Multithreaded**: Configurable thread pool with auto-scaling
-- ✅ **Event-Driven**: Linux epoll for efficient I/O multiplexing
-- ✅ **HTTP/1.1**: Full protocol support with keep-alive
-- ✅ **Static Files**: Efficient static content serving
-- ✅ **Caching**: Intelligent LRU cache with TTL
-- ✅ **Rate Limiting**: Token bucket per-IP rate limiting
-- ✅ **Logging**: Comprehensive access and error logging
-- ✅ **Configuration**: JSON-based runtime configuration
+
+- **High Performance**: 78K+ requests/sec with low latency
+- **Multithreaded**: Configurable thread pool with auto-scaling
+- **Event-Driven**: Linux epoll for efficient I/O multiplexing
+- **HTTP/1.1**: Full protocol support with keep-alive
+- **Static Files**: Efficient static content serving
+- **Caching**: Intelligent LRU cache with TTL
+- **Rate Limiting**: Token bucket per-IP rate limiting
+- **Logging**: Comprehensive access and error logging
+- **Configuration**: JSON-based runtime configuration
 
 ### Security Features
-- :lock: **Path Traversal Protection**: Prevents directory escape attacks
-- :lock: **Rate Limiting**: DDoS protection with configurable limits
-- :lock: **Non-Root Execution**: Docker containers run as non-root user
-- :lock: **Input Validation**: Comprehensive HTTP request validation
-- :lock: **Resource Limits**: Configurable memory and connection limits
+
+- **Path Traversal Protection**: Prevents directory escape attacks
+- **Rate Limiting**: DDoS protection with configurable limits
+- **Non-Root Execution**: Docker containers run as non-root user
+- **Input Validation**: Comprehensive HTTP request validation
+- **Resource Limits**: Configurable memory and connection limits
 
 ### Operational Features
-- :bar_chart: **Performance Monitoring**: Built-in metrics and statistics
-- :whale: **Docker Support**: Multi-stage builds for production
-- :test_tube: **Comprehensive Testing**: 600+ lines of unit tests
-- :chart_with_upwards_trend: **Benchmarking**: Performance comparison tools included
-- :gear: **Configuration**: Runtime parameter adjustment
 
-## :rocket: Quick Start
+- **Performance Monitoring**: Built-in metrics and statistics
+- **Docker Support**: Multi-stage builds for production
+- **Comprehensive Testing**: 600+ lines of unit tests
+- **Benchmarking**: Performance comparison tools included
+- **Configuration**: Runtime parameter adjustment
+
+## Quick Start
 
 ### Prerequisites
+
 - C++17 compatible compiler (GCC 7+ or Clang 5+)
 - CMake 3.16+
 - Linux (Ubuntu 20.04+ recommended)
@@ -206,7 +217,7 @@ Edit `config.json` to customize server behavior:
 }
 ```
 
-## :bar_chart: Performance Benchmarks
+## Performance Benchmarks
 
 ### Comprehensive Stress Test Results
 
@@ -214,47 +225,52 @@ Edit `config.json` to customize server behavior:
 
 ![Stress Test Results](images/Stress%20Test.png)
 
-*Real-time stress testing demonstration showing the server handling high concurrent loads with excellent performance and resource efficiency.*
+_Real-time stress testing demonstration showing the server handling high concurrent loads with excellent performance and resource efficiency._
 
 #### Connection Scalability Test
-| Concurrent Connections | Requests/sec | Performance |
-|------------------------|-------------|-------------|
-| 100 | 39,565.85 | ✅ Baseline |
-| 500 | 55,934.55 | ✅ +41.4% |
-| 1000 | 78,091.55 | ✅ +97.3% |
-| **2000** | **73,075.56** | ✅ **+84.7% Peak** |
-| 5000 | 71,508.89 | ✅ +80.7% |
+
+| Concurrent Connections | Requests/sec  | Performance     |
+| ---------------------- | ------------- | --------------- |
+| 100                    | 39,565.85     | Baseline        |
+| 500                    | 55,934.55     | +41.4%          |
+| 1000                   | 78,091.55     | +97.3%          |
+| **2000**               | **73,075.56** | **+84.7% Peak** |
+| 5000                   | 71,508.89     | +80.7%          |
 
 #### Extended Duration Test
-| Test Duration | Avg Requests/sec | Stability |
-|--------------|------------------|-----------|
-| 1 minute | 46,706.94 | ✅ Stable |
-| 5 minutes | 47,831.58 | ✅ Consistent |
-| 10 minutes | 48,858.91 | ✅ Sustained |
+
+| Test Duration | Avg Requests/sec | Stability  |
+| ------------- | ---------------- | ---------- |
+| 1 minute      | 46,706.94        | Stable     |
+| 5 minutes     | 47,831.58        | Consistent |
+| 10 minutes    | 48,858.91        | Sustained  |
 
 #### Memory Stability Test (5-minute sustained load)
+
 ```
 Initial memory usage: 1,680KB
 Final memory usage:   1,680KB
 Memory growth:        0% (0KB increase)
 Maximum memory:       1,680KB
-Status:              ✅ No memory leaks detected
+Status:              No memory leaks detected
 ```
 
 ### Comparison with Industry Standards
-| Server | Peak Requests/sec | Sustained Req/s | Memory Usage | Stability |
-|--------|------------------|-----------------|--------------|-----------|
-| **This Server** | **78,091.55** | **48,858.91** | **1.7MB** | **✅ 0% growth** |
-| Nginx | ~45,000 | ~40,000 | ~25MB | ✅ Stable |
-| Apache | ~25,000 | ~20,000 | ~100MB | ⚠️ Variable |
+
+| Server          | Peak Requests/sec | Sustained Req/s | Memory Usage | Stability     |
+| --------------- | ----------------- | --------------- | ------------ | ------------- |
+| **This Server** | **78,091.55**     | **48,858.91**   | **1.7MB**    | **0% growth** |
+| Nginx           | ~45,000           | ~40,000         | ~25MB        | Stable        |
+| Apache          | ~25,000           | ~20,000         | ~100MB       | Variable      |
 
 **Performance Advantages:**
+
 - **73% faster** peak performance than Nginx
-- **212% faster** peak performance than Apache  
+- **212% faster** peak performance than Apache
 - **Exceptional memory efficiency** at 1.7MB (15x better than Nginx)
 - **Perfect memory stability** with zero growth under sustained load
 
-## :gear: Performance Optimization - Log Reduction Impact
+## Performance Optimization - Log Reduction Impact
 
 ### High-Load Error Handling Optimization
 
@@ -265,16 +281,19 @@ During stress testing, the server was producing excessive error logging for norm
 The following error messages are **normal and expected** under high load in multithreaded scenarios:
 
 **Race Condition Errors:**
+
 - `[Response] fd=X ERROR: Connection already closed` (server.cpp:377)
 - `[Send] fd=X ERROR: Failed to send response: Bad file descriptor` (server.cpp:444)
 
 **Root Causes:**
+
 1. **Timing Issues**: Client disconnects while server is processing the response
-2. **Race Conditions**: Connection gets cleaned up by one thread while another thread tries to send data  
+2. **Race Conditions**: Connection gets cleaned up by one thread while another thread tries to send data
 3. **High Load Behavior**: Under stress testing, clients timeout/disconnect before server can respond
 4. **Network Conditions**: High load causes natural connection drops
 
 **Why These Errors Are Normal:**
+
 - **High Concurrency**: With 10,000+ connection limit, more concurrent connections create more timing opportunities
 - **Client Behavior**: Load testing tools often timeout or close connections aggressively
 - **Network Stack**: TCP connections naturally drop under extreme load conditions
@@ -284,27 +303,28 @@ The following error messages are **normal and expected** under high load in mult
 
 By removing these excessive log messages (while preserving all error handling logic), we achieved significant performance improvements:
 
-| Metric | Before Optimization | After Optimization | Improvement |
-|--------|-------------------|-------------------|-------------|
-| **Peak Performance** | 72,158 req/s | **78,091.55 req/s** | **+8.2%** |
-| **1000 Connections** | 58,267 req/s | **78,091.55 req/s** | **+34.0%** |
-| **Sustained (10min)** | 47,290 req/s | **48,858.91 req/s** | **+3.3%** |
-| **Memory Usage** | ~18MB | **1.7MB** | **-91.1%** |
-| **Log I/O Overhead** | High | **Eliminated** | **100% reduced** |
+| Metric                | Before Optimization | After Optimization  | Improvement      |
+| --------------------- | ------------------- | ------------------- | ---------------- |
+| **Peak Performance**  | 72,158 req/s        | **78,091.55 req/s** | **+8.2%**        |
+| **1000 Connections**  | 58,267 req/s        | **78,091.55 req/s** | **+34.0%**       |
+| **Sustained (10min)** | 47,290 req/s        | **48,858.91 req/s** | **+3.3%**        |
+| **Memory Usage**      | ~18MB               | **1.7MB**           | **-91.1%**       |
+| **Log I/O Overhead**  | High                | **Eliminated**      | **100% reduced** |
 
 ### Key Benefits
 
-✅ **Performance Gain**: 8-34% improvement in request throughput  
-✅ **Memory Efficiency**: 91% reduction in memory usage  
-✅ **Clean Output**: Eliminated noise from expected connection drops  
-✅ **Maintained Reliability**: All error handling logic preserved  
-✅ **Production Ready**: Server handles edge cases silently and efficiently
+**Performance Gain**: 8-34% improvement in request throughput  
+**Memory Efficiency**: 91% reduction in memory usage  
+**Clean Output**: Eliminated noise from expected connection drops  
+**Maintained Reliability**: All error handling logic preserved  
+**Production Ready**: Server handles edge cases silently and efficiently
 
 **Note**: This optimization demonstrates that high-performance servers must balance comprehensive logging with performance efficiency. The removed messages were debugging information for normal operational conditions, not actual errors requiring attention.
 
-## :test_tube: Testing
+## Testing
 
 ### Unit Tests
+
 ```bash
 # Build with tests
 mkdir build && cd build
@@ -316,6 +336,7 @@ make -j$(nproc)
 ```
 
 ### Benchmark Testing
+
 ```bash
 # Run comprehensive benchmarks
 ./scripts/benchmark.sh
@@ -327,11 +348,11 @@ make -j$(nproc)
 ./scripts/stress_test.sh
 ```
 
-## :file_folder: Project Structure
+## Project Structure
 
 ```
 multithreaded-webserver-cpp/
-├── 📁 include/           # Header files
+├── include/           # Header files
 │   ├── server.h         # Main server class
 │   ├── thread_pool.h    # Thread pool implementation
 │   ├── http_request.h   # HTTP request parser
@@ -341,7 +362,7 @@ multithreaded-webserver-cpp/
 │   ├── file_handler.h   # File serving logic
 │   ├── logger.h         # Logging system
 │   └── epoll_wrapper.h  # Epoll abstraction
-├── 📁 src/              # Source files
+├── src/              # Source files
 │   ├── main.cpp         # Application entry point
 │   ├── server.cpp       # Server implementation
 │   ├── thread_pool.cpp  # Thread pool logic
@@ -352,37 +373,40 @@ multithreaded-webserver-cpp/
 │   ├── file_handler.cpp # File operations
 │   ├── logger.cpp       # Logging implementation
 │   └── epoll_wrapper.cpp# Epoll wrapper
-├── 📁 tests/            # Unit tests (GoogleTest)
-├── 📁 scripts/          # Benchmarking scripts
-├── 📁 docker/           # Docker configuration
-├── 📁 public/           # Static web content
-├── 📁 logs/             # Server logs
+├── tests/            # Unit tests (GoogleTest)
+├── scripts/          # Benchmarking scripts
+├── docker/           # Docker configuration
+├── public/           # Static web content
+├── logs/             # Server logs
 ├── config.json          # Server configuration
 ├── CMakeLists.txt       # Build configuration
 ├── Dockerfile           # Multi-stage Docker build
 └── docker-compose.yml   # Container orchestration
 ```
 
-## :gear: Configuration Options
+## Configuration Options
 
 ### Server Configuration
+
 - `host`: Bind address (default: "0.0.0.0")
 - `port`: Listen port (default: 8080)
 - `max_connections`: Maximum concurrent connections
 - `socket_timeout`: Connection timeout in seconds
 
 ### Performance Tuning
+
 - `thread_pool_size`: Worker thread count (0 = auto-detect)
 - `max_queue_size`: Maximum task queue size
 - `cache.max_size_mb`: Cache memory limit
 - `cache.ttl_seconds`: Cache entry lifetime
 
 ### Security Settings
+
 - `rate_limiting.enabled`: Enable/disable rate limiting
 - `rate_limiting.requests_per_second`: Request rate limit
 - `rate_limiting.burst_size`: Burst capacity
 
-## :handshake: Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
@@ -391,6 +415,7 @@ multithreaded-webserver-cpp/
 5. Open a Pull Request
 
 ### Development Setup
+
 ```bash
 # Use development Docker container
 docker-compose --profile development up webserver-dev
@@ -399,9 +424,10 @@ docker-compose --profile development up webserver-dev
 cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON
 ```
 
-## :chart_with_upwards_trend: Monitoring and Observability
+## Monitoring and Observability
 
 ### Built-in Metrics
+
 - Request throughput (requests/sec)
 - Response time percentiles
 - Cache hit ratios
@@ -410,6 +436,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON
 - Memory usage tracking
 
 ### Log Analysis
+
 ```bash
 # Monitor access logs
 tail -f logs/access.log
@@ -421,26 +448,30 @@ tail -f logs/error.log
 grep "200 OK" logs/access.log | wc -l
 ```
 
-## :mag: Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
 **High CPU Usage**
+
 - Check thread pool size configuration
 - Monitor for busy loops in request processing
 - Verify epoll configuration
 
 **Memory Leaks**
+
 - Monitor cache size and eviction policies
 - Check for unclosed file descriptors
 - Use valgrind for detailed analysis
 
 **Connection Issues**
+
 - Verify firewall settings
 - Check file descriptor limits (`ulimit -n`)
 - Monitor connection timeout settings
 
 ### Debug Mode
+
 ```bash
 # Build with debug symbols
 cmake .. -DCMAKE_BUILD_TYPE=Debug
@@ -450,20 +481,21 @@ gdb ./webserver
 valgrind --leak-check=full ./webserver
 ```
 
-## :page_facing_up: License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/swe-robertkibet/multithreaded-webserver-cpp/blob/main/LICENSE) file for details.
 
-## :pray: Acknowledgments
+## Acknowledgments
 
 - Linux epoll documentation and best practices
 - Modern C++ design patterns and idioms
 - HTTP/1.1 specification (RFC 7230-7235)
 - Performance optimization techniques from systems programming
 
-## :telephone_receiver: Support
+## Support
 
 For issues and questions:
+
 - [Create an issue on GitHub](https://github.com/swe-robertkibet/multithreaded-webserver-cpp/issues)
 - Check existing documentation
 - Review performance benchmarks
